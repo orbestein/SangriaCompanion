@@ -12,10 +12,15 @@ internal sealed class EventModule
 
         var globalRect = new Rect(area.x, y, area.width, 36f);
         SCUI.Panel(globalRect, SCTheme.PanelAlt, Plugin.EventAlertsEnabled.Value ? SCTheme.GoldSoft : SCTheme.BorderSoft);
-        SCUI.Label(new Rect(globalRect.x + 12f, globalRect.y + 6f, globalRect.width - 150f, 24f), "Avisos de eventos na tela", styles.Label);
-        if (SCUI.Button(new Rect(globalRect.xMax - 112f, globalRect.y + 6f, 100f, 24f), Plugin.EventAlertsEnabled.Value ? "LIGADO" : "DESLIGADO", styles.Button, true))
+        SCUI.Label(new Rect(globalRect.x + 12f, globalRect.y + 6f, globalRect.width - 260f, 24f), "Eventos", styles.Label);
+        if (SCUI.Button(new Rect(globalRect.xMax - 236f, globalRect.y + 6f, 108f, 24f), Plugin.EventAlertsEnabled.Value ? "AVISOS: ON" : "AVISOS: OFF", styles.Button, true))
         {
             Plugin.EventAlertsEnabled.Value = !Plugin.EventAlertsEnabled.Value;
+            Plugin.SaveState();
+        }
+        if (SCUI.Button(new Rect(globalRect.xMax - 118f, globalRect.y + 6f, 106f, 24f), Plugin.EventHudEnabled.Value ? "HUD: ON" : "HUD: OFF", styles.Button, true))
+        {
+            Plugin.EventHudEnabled.Value = !Plugin.EventHudEnabled.Value;
             Plugin.SaveState();
         }
 

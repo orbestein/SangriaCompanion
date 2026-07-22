@@ -9,29 +9,35 @@ internal sealed class BossModule
         SCUI.SectionHeader(area, "BOSSES", styles);
         var controlsY = area.y + 48f;
 
-        SCUI.Label(new Rect(area.x, controlsY - 20f, 250f, 18f), "PESQUISAR PELO NOME", styles.Tiny);
+        var controlsGap = 10f;
+        var searchWidth = Mathf.Clamp(area.width * 0.42f, 210f, 260f);
+        var favoritesWidth = Mathf.Clamp(area.width * 0.27f, 140f, 170f);
+        var alertsX = area.x + searchWidth + controlsGap + favoritesWidth + controlsGap;
+        var alertsWidth = Mathf.Max(110f, area.xMax - alertsX);
+
+        SCUI.Label(new Rect(area.x, controlsY - 20f, searchWidth, 18f), "PESQUISAR PELO NOME", styles.Tiny);
         state.BossSearch = SCUI.SearchBox(
-            new Rect(area.x, controlsY, 250f, 32f),
+            new Rect(area.x, controlsY, searchWidth, 32f),
             state.BossSearch,
             styles.Input,
             out var searchFocused,
             "Digite o nome do boss...");
         state.BossSearchFocused = searchFocused;
 
-        if (!string.IsNullOrEmpty(state.BossSearch) && SCUI.Button(new Rect(area.x + 218f, controlsY + 3f, 28f, 26f), "×", styles.Button, true))
+        if (!string.IsNullOrEmpty(state.BossSearch) && SCUI.Button(new Rect(area.x + searchWidth - 32f, controlsY + 3f, 28f, 26f), "×", styles.Button, true))
         {
             state.BossSearch = string.Empty;
             GUI.FocusControl(string.Empty);
             state.BossSearchFocused = false;
         }
 
-        if (SCUI.Toggle(new Rect(area.x + 262f, controlsY, 164f, 32f), "Favoritos", Plugin.ShowOnlyFavorites.Value, styles))
+        if (SCUI.Toggle(new Rect(area.x + searchWidth + controlsGap, controlsY, favoritesWidth, 32f), "Favoritos", Plugin.ShowOnlyFavorites.Value, styles))
         {
             Plugin.ShowOnlyFavorites.Value = !Plugin.ShowOnlyFavorites.Value;
             Plugin.SaveState();
         }
 
-        if (SCUI.Toggle(new Rect(area.x + 438f, controlsY, area.width - 438f, 32f), "Alertas", Plugin.BossAlertsEnabled.Value, styles))
+        if (SCUI.Toggle(new Rect(alertsX, controlsY, alertsWidth, 32f), "Alertas", Plugin.BossAlertsEnabled.Value, styles))
         {
             Plugin.BossAlertsEnabled.Value = !Plugin.BossAlertsEnabled.Value;
             Plugin.SaveState();
@@ -84,9 +90,18 @@ internal sealed class BossModule
         if (SCUI.Button(new Rect(area.x + 132f, footerY, 28f, 28f), "−", styles.Button, true)) ChangeAlertSeconds(-5);
         if (SCUI.Button(new Rect(area.x + 164f, footerY, 28f, 28f), "+", styles.Button, true)) ChangeAlertSeconds(5);
 
-        SCUI.Label(new Rect(area.x + 218f, footerY, 145f, 28f), $"Na tela: {Plugin.BossAlertDuration.Value:0}s", styles.Label);
-        if (SCUI.Button(new Rect(area.x + 354f, footerY, 28f, 28f), "−", styles.Button, true)) ChangeAlertDuration(-1f);
-        if (SCUI.Button(new Rect(area.x + 386f, footerY, 28f, 28f), "+", styles.Button, true)) ChangeAlertDuration(1f);
+        SCUI.Label(new Rect(area.x + 218f, footerY, 112f, 28f), $"Na tela: {Plugin.BossAlertDuration.Value:0}s", styles.Label);
+        if (SCUI.Button(new Rect(area.x + 326f, footerY, 28f, 28f), "−", styles.Button, true)) ChangeAlertDuration(-1f);
+        if (SCUI.Button(new Rect(area.x + 358f, footerY, 28f, 28f), "+", styles.Button, true)) ChangeAlertDuration(1f);
+
+        var hudButtonX = area.x + 400f;
+        var hudButtonWidth = Mathf.Max(150f, area.xMax - hudButtonX);
+        if (SCUI.Button(new Rect(hudButtonX, footerY, hudButtonWidth, 28f),
+                Plugin.FavoriteBossHudEnabled.Value ? "MINI HUD: LIGADA" : "MINI HUD: DESLIGADA", styles.Button, true))
+        {
+            Plugin.FavoriteBossHudEnabled.Value = !Plugin.FavoriteBossHudEnabled.Value;
+            Plugin.SaveState();
+        }
     }
 
     private static float CalculateContentHeight(List<CompanionBoss> filtered, CompanionState state, float width)

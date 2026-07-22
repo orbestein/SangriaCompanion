@@ -15,7 +15,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string PluginGuid = "alvaro.vrising.sangriacompanion";
     public const string PluginName = "Sangria Companion";
-    public const string PluginVersion = "2.3.0";
+    public const string PluginVersion = "2.3.2";
 
     internal static Plugin Instance { get; private set; } = null!;
     internal static CompanionBehaviour Behaviour { get; private set; } = null!;
@@ -47,6 +47,9 @@ public sealed class Plugin : BasePlugin
     internal static ConfigEntry<bool> EventAlertsEnabled { get; private set; } = null!;
     internal static ConfigEntry<string> EventAlertsSelected { get; private set; } = null!;
     internal static ConfigEntry<float> EventAlertDuration { get; private set; } = null!;
+    internal static ConfigEntry<bool> EventHudEnabled { get; private set; } = null!;
+    internal static ConfigEntry<float> EventHudX { get; private set; } = null!;
+    internal static ConfigEntry<float> EventHudY { get; private set; } = null!;
     internal static ConfigEntry<bool> AlwaysShowNotifications { get; private set; } = null!;
 
     internal static ConfigEntry<bool> MuteAllNotifications { get; private set; } = null!;
@@ -107,6 +110,9 @@ public sealed class Plugin : BasePlugin
         EventAlertsEnabled = Config.Bind("Events", "AlertsEnabled", true, "Ativa avisos de eventos na tela.");
         EventAlertsSelected = Config.Bind("Events", "SelectedAlerts", "Chefe Supremo,Dantos Sangrentum,Piracema,Investida Cientifica / Invasao", "Eventos com alertas ativos, separados por vírgula.");
         EventAlertDuration = Config.Bind("Events", "AlertDurationSeconds", 6f, "Duração do aviso de evento na tela.");
+        EventHudEnabled = Config.Bind("Events", "CompactHudEnabled", true, "Exibe uma mini HUD com o evento ativo e os próximos eventos.");
+        EventHudX = Config.Bind("Events", "CompactHudX", 390f, "Posição horizontal da mini HUD de eventos.");
+        EventHudY = Config.Bind("Events", "CompactHudY", 118f, "Posição vertical da mini HUD de eventos.");
         AlwaysShowNotifications = Config.Bind("Notifications", "AlwaysShow", true, "Mantém os avisos visíveis mesmo com o painel e as HUDs compactas fechados.");
 
         MuteAllNotifications = Config.Bind("Notifications", "MuteAll", false, "Silencia todos os avisos do Companion.");

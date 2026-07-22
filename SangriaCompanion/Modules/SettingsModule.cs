@@ -30,16 +30,9 @@ internal sealed class SettingsModule
         DrawTimingColumn(new Rect(area.x + columnWidth + gap, top, columnWidth, 244f), styles);
 
         var y = top + 254f;
-        DrawQuickMute(new Rect(area.x, y, area.width, 54f), styles);
-        y += 64f;
-        DrawVisualControls(new Rect(area.x, y, area.width, 48f), styles);
+        DrawQuickMute(new Rect(area.x, y, area.width, 50f), styles);
         y += 58f;
-
-        SCUI.Panel(new Rect(area.x, y, area.width, 46f), SCTheme.PanelAlt, SCTheme.BorderSoft);
-        SCUI.Label(new Rect(area.x + 12f, y + 5f, area.width - 180f, 18f), "Sangria Companion v2.3.0", styles.Label);
-        SCUI.Label(new Rect(area.x + 12f, y + 23f, area.width - 180f, 16f), "Discord: Orbestein", styles.Muted);
-        if (SCUI.Button(new Rect(area.xMax - 158f, y + 9f, 146f, 28f), "RESTAURAR PADRÕES", styles.Button, true))
-            RestoreDefaults();
+        DrawVisualControls(new Rect(area.x, y, area.width, 48f), styles);
     }
 
     private static void DrawNotificationColumn(Rect rect, SCStyles styles)
@@ -60,9 +53,9 @@ internal sealed class SettingsModule
         var width = rect.width - 20f;
         var y = rect.y + 43f;
 
-        DrawPresetRow(new Rect(x, y, width, 34f), "Eventos", FormatThresholds(EventNotificationService.ParseThresholds()), () => CyclePreset(Plugin.EventAlertThresholds, EventPresets), styles);
+        DrawPresetRow(new Rect(x, y, width, 34f), "Eventos", DescribePreset(Plugin.EventAlertThresholds.Value, EventPresets), () => CyclePreset(Plugin.EventAlertThresholds, EventPresets), styles);
         y += 40f;
-        DrawPresetRow(new Rect(x, y, width, 34f), "Bosses", FormatThresholds(BossNotificationService.ParseThresholds()), () => CyclePreset(Plugin.BossAlertThresholds, BossPresets), styles);
+        DrawPresetRow(new Rect(x, y, width, 34f), "Bosses", DescribePreset(Plugin.BossAlertThresholds.Value, BossPresets), () => CyclePreset(Plugin.BossAlertThresholds, BossPresets), styles);
         y += 44f;
         DrawDurationRow(new Rect(x, y, width, 34f), "Aviso evento", Plugin.EventAlertDuration, styles);
         y += 40f;
@@ -70,6 +63,7 @@ internal sealed class SettingsModule
         y += 40f;
         DrawDurationRow(new Rect(x, y, width, 34f), "Aviso coleta", Plugin.CollectionAlertDuration, styles);
     }
+
 
     private static void DrawQuickMute(Rect rect, SCStyles styles)
     {
@@ -97,10 +91,21 @@ internal sealed class SettingsModule
         if (SCUI.Button(new Rect(rect.xMax - 50f, rect.y + 5f, 42f, 24f), "+", styles.Button, true)) ChangeDuration(entry, 1f);
     }
 
-    private static string FormatThresholds(IEnumerable<int> values)
+    private static string DescribePreset(string current, IReadOnlyList<string> presets)
     {
-        var text = string.Join(" / ", values.Select(v => v >= 3600 ? (v / 3600) + "h" : v >= 60 ? (v / 60) + "m" : v + "s"));
-        return string.IsNullOrWhiteSpace(text) ? "SEM MARCOS" : text;
+        var index = -1;
+        for (var i = 0; i < presets.Count; i++)
+            if (string.Equals(current, presets[i], StringComparison.Ordinal)) index = i;
+
+        var name = index switch
+        {
+            0 => "BÁSICO",
+            1 => "INTERMEDIÁRIO",
+            2 => "COMPLETO",
+            _ => "PERSONALIZADO"
+        };
+        var count = current.Split(',', StringSplitOptions.RemoveEmptyEntries).Length;
+        return $"{name} ({count} avisos)";
     }
 
     private static void CyclePreset(ConfigEntry<string> entry, IReadOnlyList<string> presets)
@@ -129,13 +134,23 @@ internal sealed class SettingsModule
     {
         SCUI.Panel(rect, SCTheme.PanelAlt, SCTheme.BorderSoft);
         var y = rect.y + 10f;
-        var half = rect.width / 2f;
-        SCUI.Label(new Rect(rect.x + 12f, y, 118f, 26f), $"Escala: {Plugin.UiScale.Value:0.00}", styles.Label);
-        if (SCUI.Button(new Rect(rect.x + 126f, y, 28f, 26f), "−", styles.Button)) ChangeScale(-0.05f);
-        if (SCUI.Button(new Rect(rect.x + 160f, y, 28f, 26f), "+", styles.Button)) ChangeScale(0.05f);
-        SCUI.Label(new Rect(rect.x + half + 8f, y, 138f, 26f), $"Opacidade: {Plugin.UiOpacity.Value:P0}", styles.Label);
-        if (SCUI.Button(new Rect(rect.xMax - 68f, y, 28f, 26f), "−", styles.Button)) ChangeOpacity(-0.05f);
-        if (SCUI.Button(new Rect(rect.xMax - 34f, y, 28f, 26f), "+", styles.Button)) ChangeOpacity(0.05f);
+        const float smallButton = 28f;
+        const float gap = 6f;
+        var restoreWidth = Mathf.Clamp(rect.width * 0.24f, 126f, 150f);
+        var available = rect.width - restoreWidth - 30f;
+        var groupWidth = available / 2f;
+
+        SCUI.Label(new Rect(rect.x + 12f, y, groupWidth - 72f, 26f), $"Escala: {Plugin.UiScale.Value:0.00}", styles.Label);
+        if (SCUI.Button(new Rect(rect.x + groupWidth - 54f, y, smallButton, 26f), "−", styles.Button)) ChangeScale(-0.05f);
+        if (SCUI.Button(new Rect(rect.x + groupWidth - 20f, y, smallButton, 26f), "+", styles.Button)) ChangeScale(0.05f);
+
+        var opacityX = rect.x + 12f + groupWidth + gap;
+        SCUI.Label(new Rect(opacityX, y, groupWidth - 72f, 26f), $"Opacidade: {Plugin.UiOpacity.Value:P0}", styles.Label);
+        if (SCUI.Button(new Rect(opacityX + groupWidth - 66f, y, smallButton, 26f), "−", styles.Button)) ChangeOpacity(-0.05f);
+        if (SCUI.Button(new Rect(opacityX + groupWidth - 32f, y, smallButton, 26f), "+", styles.Button)) ChangeOpacity(0.05f);
+
+        if (SCUI.Button(new Rect(rect.xMax - restoreWidth - 10f, y, restoreWidth, 26f), "RESTAURAR PADRÕES", styles.Button, true))
+            RestoreDefaults();
     }
 
     private static void ChangeDuration(ConfigEntry<float> entry, float delta)
@@ -164,6 +179,8 @@ internal sealed class SettingsModule
         Plugin.CollectionAlertsEnabled.Value = true;
         Plugin.TrackerAlertsEnabled.Value = true;
         Plugin.RecipeAlertsEnabled.Value = true;
+        Plugin.FavoriteBossHudEnabled.Value = true;
+        Plugin.EventHudEnabled.Value = true;
         Plugin.EventAlertThresholds.Value = EventPresets[2];
         Plugin.BossAlertThresholds.Value = BossPresets[2];
         Plugin.EventAlertDuration.Value = 6f;

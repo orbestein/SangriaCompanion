@@ -30,6 +30,8 @@ internal sealed class CompanionBehaviour : MonoBehaviour
     private Vector2 _collectionHudDragOffset;
     private bool _favoriteBossHudDragging;
     private Vector2 _favoriteBossHudDragOffset;
+    private bool _eventHudDragging;
+    private Vector2 _eventHudDragOffset;
 
     private void Awake()
     {
@@ -93,6 +95,7 @@ internal sealed class CompanionBehaviour : MonoBehaviour
         if (Plugin.AlwaysShowNotifications.Value || _state.PanelVisible || Plugin.TrackerHudEnabled.Value || Plugin.CollectionHudEnabled.Value)
             ModuleRuntime.Run("Notificações visuais", () => NotificationCenter.Draw(_styles));
         ModuleRuntime.Run("HUD de bosses favoritos", DrawFavoriteBossHud);
+        ModuleRuntime.Run("HUD de eventos", DrawEventHud);
         ModuleRuntime.Run("HUD do rastreador", DrawTrackedBossHud);
         ModuleRuntime.Run("HUD de coleta", DrawCollectionHud);
         if (!_state.PanelVisible)
@@ -274,7 +277,7 @@ internal sealed class CompanionBehaviour : MonoBehaviour
 
         BossCatalog.Refresh();
         var favorites = BossCatalog.All
-            .Where(x => x.IsFavorite && x.TryGetConfirmedDisplay(out _, out _))
+            .Where(x => x.IsFavorite)
             .ToList();
         if (favorites.Count == 0) return;
 
@@ -354,10 +357,14 @@ internal sealed class CompanionBehaviour : MonoBehaviour
 
                 SCUI.Label(new Rect(13f, y + 1f, 164f, 21f), "★ " + boss.Name, _styles.Label);
 
-                boss.TryGetConfirmedDisplay(out var confirmedStatus, out var confirmedRemaining);
                 string status;
                 GUIStyle statusStyle;
-                if (confirmedStatus == CompanionBossStatus.Alive)
+                if (!boss.TryGetConfirmedDisplay(out var confirmedStatus, out var confirmedRemaining))
+                {
+                    status = "AGUARDANDO";
+                    statusStyle = _styles.Muted;
+                }
+                else if (confirmedStatus == CompanionBossStatus.Alive)
                 {
                     status = "VIVO";
                     statusStyle = _styles.Green;
@@ -376,6 +383,100 @@ internal sealed class CompanionBehaviour : MonoBehaviour
 
             if (hasMore)
                 SCUI.Label(new Rect(12f, y, baseWidth - 24f, 20f), "+ " + (favorites.Count - maxVisible) + " favorito(s) no painel principal", _styles.Tiny);
+        }
+        finally
+        {
+            GUI.matrix = oldMatrix;
+        }
+    }
+
+
+    private void DrawEventHud()
+    {
+        if (!Plugin.EventHudEnabled.Value) return;
+
+        var upcoming = EventScheduleService.GetUpcoming(3);
+        if (upcoming.Count == 0) return;
+
+        const float baseWidth = 340f;
+        const float baseHeight = 132f;
+        var requestedScale = Mathf.Clamp(Plugin.UiScale.Value, 0.8f, 1.25f);
+        var fitScale = Mathf.Min(
+            Mathf.Max(0.62f, (Screen.width - 12f) / baseWidth),
+            Mathf.Max(0.62f, (Screen.height - 12f) / baseHeight));
+        var scale = Mathf.Min(requestedScale, fitScale);
+        var width = baseWidth * scale;
+        var height = baseHeight * scale;
+
+        var rect = new Rect(Plugin.EventHudX.Value, Plugin.EventHudY.Value, width, height);
+        rect.x = Mathf.Clamp(rect.x, 0f, Mathf.Max(0f, Screen.width - rect.width));
+        rect.y = Mathf.Clamp(rect.y, 0f, Mathf.Max(0f, Screen.height - rect.height));
+        Plugin.EventHudX.Value = rect.x;
+        Plugin.EventHudY.Value = rect.y;
+
+        InputBlockService.RegisterScreenArea(rect);
+        InputBlockService.ObservePointer(rect);
+        var current = Event.current;
+        var closeRect = new Rect(rect.xMax - 30f * scale, rect.y + 3f * scale, 24f * scale, 24f * scale);
+        if (current.type == EventType.MouseDown && current.button == 0 && closeRect.Contains(current.mousePosition))
+        {
+            Plugin.EventHudEnabled.Value = false;
+            Plugin.SaveState();
+            current.Use();
+            return;
+        }
+
+        var dragBar = new Rect(rect.x, rect.y, rect.width - 38f * scale, 31f * scale);
+        if (current.type == EventType.MouseDown && current.button == 0 && dragBar.Contains(current.mousePosition))
+        {
+            _eventHudDragging = true;
+            _eventHudDragOffset = current.mousePosition - new Vector2(rect.x, rect.y);
+            current.Use();
+        }
+        else if (_eventHudDragging && current.type == EventType.MouseDrag)
+        {
+            Plugin.EventHudX.Value = Mathf.Clamp(current.mousePosition.x - _eventHudDragOffset.x, 0f, Mathf.Max(0f, Screen.width - width));
+            Plugin.EventHudY.Value = Mathf.Clamp(current.mousePosition.y - _eventHudDragOffset.y, 0f, Mathf.Max(0f, Screen.height - height));
+            current.Use();
+        }
+        else if (_eventHudDragging && current.type == EventType.MouseUp)
+        {
+            _eventHudDragging = false;
+            Plugin.SaveState();
+            current.Use();
+        }
+
+        rect.x = Plugin.EventHudX.Value;
+        rect.y = Plugin.EventHudY.Value;
+        var oldMatrix = GUI.matrix;
+        GUI.matrix = Matrix4x4.TRS(new Vector3(rect.x, rect.y, 0f), Quaternion.identity, new Vector3(scale, scale, 1f));
+        try
+        {
+            var local = new Rect(0f, 0f, baseWidth, baseHeight);
+            var opacity = Mathf.Clamp(Plugin.UiOpacity.Value, 0.55f, 1f);
+            var background = SCTheme.Backdrop;
+            background.a = opacity;
+            SCUI.Panel(local, background, SCTheme.BorderSoft, 1f);
+            SCTheme.Fill(new Rect(0f, 0f, baseWidth, 31f), new Color(SCTheme.Header.r, SCTheme.Header.g, SCTheme.Header.b, opacity));
+            SCTheme.Fill(new Rect(0f, 30f, baseWidth, 1f), SCTheme.BorderSoft);
+            SCUI.Label(new Rect(11f, 4f, baseWidth - 48f, 23f), "EVENTOS", _styles.Gold);
+            SCUI.Button(new Rect(baseWidth - 30f, 4f, 24f, 23f), "×", _styles.Button, true);
+
+            var y = 37f;
+            foreach (var item in upcoming.Take(3))
+            {
+                var active = item.IsActive;
+                var nameStyle = active ? _styles.Green : _styles.Label;
+                var countdown = active
+                    ? "ATIVO • " + EventScheduleService.FormatCountdown(item.UntilEnd)
+                    : EventScheduleService.FormatCountdown(item.UntilStart);
+                SCUI.Label(new Rect(12f, y, 210f, 24f), item.Name, nameStyle);
+                var countdownStyle = active ? _styles.Green : _styles.Gold;
+                countdownStyle.alignment = TextAnchor.MiddleRight;
+                SCUI.Label(new Rect(220f, y, 106f, 24f), countdown, countdownStyle);
+                countdownStyle.alignment = TextAnchor.MiddleLeft;
+                y += 29f;
+            }
         }
         finally
         {
