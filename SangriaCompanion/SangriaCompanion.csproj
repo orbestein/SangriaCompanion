@@ -1,0 +1,161 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <AssemblyName>SangriaCompanion</AssemblyName>
+    <RootNamespace>SangriaCompanion</RootNamespace>
+    <Version>2.2.0</Version>
+    <AssemblyVersion>2.2.0.0</AssemblyVersion>
+    <FileVersion>2.2.0.0</FileVersion>
+
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <OutputPath>bin\Release\</OutputPath>
+
+    <VRisingDir Condition="Exists('C:\Program Files (x86)\Steam\steamapps\common\VRising\VRising.exe')">C:\Program Files (x86)\Steam\steamapps\common\VRising</VRisingDir>
+    <VRisingDir Condition="'$(VRisingDir)' == '' and Exists('C:\Steam\steamapps\common\VRising\VRising.exe')">C:\Steam\steamapps\common\VRising</VRisingDir>
+    <VRisingDir Condition="'$(VRisingDir)' == '' and Exists('D:\Steam\steamapps\common\VRising\VRising.exe')">D:\Steam\steamapps\common\VRising</VRisingDir>
+    <VRisingDir Condition="'$(VRisingDir)' == '' and Exists('D:\SteamLibrary\steamapps\common\VRising\VRising.exe')">D:\SteamLibrary\steamapps\common\VRising</VRisingDir>
+    <VRisingDir Condition="'$(VRisingDir)' == '' and Exists('E:\SteamLibrary\steamapps\common\VRising\VRising.exe')">E:\SteamLibrary\steamapps\common\VRising</VRisingDir>
+
+    <BepInExDir>$(VRisingDir)\BepInEx</BepInExDir>
+    <CoreDir>$(BepInExDir)\core</CoreDir>
+    <InteropDir>$(BepInExDir)\interop</InteropDir>
+    <PluginsDir>$(BepInExDir)\plugins</PluginsDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Plugin.cs" />
+    <Compile Include="CompanionBehaviour.cs" />
+    <Compile Include="EmergencyLauncherBehaviour.cs" />
+    <Compile Include="Core\CompanionPage.cs" />
+    <Compile Include="Core\CompanionState.cs" />
+    <Compile Include="Models\BossModels.cs" />
+    <Compile Include="Models\ItemModels.cs" />
+    <Compile Include="Modules\DashboardModule.cs" />
+    <Compile Include="Modules\BossModule.cs" />
+    <Compile Include="Modules\EventModule.cs" />
+    <Compile Include="Modules\TrackerModule.cs" />
+    <Compile Include="Modules\CollectionModule.cs" />
+    <Compile Include="Modules\SettingsModule.cs" />
+    <Compile Include="Services\BossPreferenceService.cs" />
+    <Compile Include="Services\EventScheduleService.cs" />
+    <Compile Include="Services\EventNotificationService.cs" />
+    <Compile Include="Services\BossNotificationService.cs" />
+    <Compile Include="Services\NotificationCenter.cs" />
+    <Compile Include="Services\CollectionService.cs" />
+    <Compile Include="Services\InventorySyncService.cs" />
+    <Compile Include="Services\ClientWorldService.cs" />
+    <Compile Include="Services\InputBlockService.cs" />
+    <Compile Include="Services\InputSuppressionPatches.cs" />
+    <Compile Include="Services\GameplayInputSuppressionPatches.cs" />
+    <Compile Include="Services\MobileBossTrackerService.cs" />
+    <Compile Include="Services\RecipeDiscoveryService.cs" />
+    <Compile Include="Services\ModuleRuntime.cs" />
+    <Compile Include="UI\SCTheme.cs" />
+    <Compile Include="UI\SCStyles.cs" />
+    <Compile Include="UI\SCUI.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BossRespawnOverlay\BossRespawnOverlay.csproj" ReferenceOutputAssembly="true" />
+    <ProjectReference Include="..\SangriaEventAlerts\SangriaEventAlerts.csproj" ReferenceOutputAssembly="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="0Harmony">
+      <HintPath>$(CoreDir)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BepInEx.Core">
+      <HintPath>$(CoreDir)\BepInEx.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BepInEx.Unity.IL2CPP">
+      <HintPath>$(CoreDir)\BepInEx.Unity.IL2CPP.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(CoreDir)\Il2CppInterop.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2Cppmscorlib">
+      <HintPath>$(InteropDir)\Il2Cppmscorlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ProjectM">
+      <HintPath>$(InteropDir)\ProjectM.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ProjectM.HUD">
+      <HintPath>$(InteropDir)\ProjectM.HUD.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ProjectM.Shared">
+      <HintPath>$(InteropDir)\ProjectM.Shared.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ProjectM.CodeGeneration">
+      <HintPath>$(InteropDir)\ProjectM.CodeGeneration.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Stunlock.Core">
+      <HintPath>$(InteropDir)\Stunlock.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.Entities">
+      <HintPath>$(InteropDir)\Unity.Entities.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.Mathematics">
+      <HintPath>$(InteropDir)\Unity.Mathematics.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.Transforms">
+      <HintPath>$(InteropDir)\Unity.Transforms.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.Collections">
+      <HintPath>$(InteropDir)\Unity.Collections.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SangrisInterface">
+      <HintPath>$(PluginsDir)\SangrisInterface.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(InteropDir)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(InteropDir)\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(InteropDir)\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(InteropDir)\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="ValidateVRisingInstallation" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(VRisingDir)' == ''" Text="A pasta do V Rising não foi localizada. Edite VRisingDir no SangriaCompanion.csproj." />
+    <Error Condition="!Exists('$(CoreDir)\BepInEx.Core.dll')" Text="BepInEx.Core.dll não encontrada em: $(CoreDir)" />
+    <Error Condition="!Exists('$(InteropDir)\UnityEngine.CoreModule.dll')" Text="UnityEngine.CoreModule.dll não encontrada em: $(InteropDir)" />
+    <Error Condition="!Exists('$(InteropDir)\ProjectM.CodeGeneration.dll')" Text="ProjectM.CodeGeneration.dll não encontrada em: $(InteropDir)" />
+    <Error Condition="!Exists('$(InteropDir)\ProjectM.HUD.dll')" Text="ProjectM.HUD.dll não encontrada em: $(InteropDir)" />
+  </Target>
+
+  <Target Name="InstallPluginInGame" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(PluginsDir)\SangriaCompanion.dll" SkipUnchangedFiles="true" />
+    <Message Text="SangriaCompanion.dll instalada em: $(PluginsDir)" Importance="high" />
+  </Target>
+</Project>

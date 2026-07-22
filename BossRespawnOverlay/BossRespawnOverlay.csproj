@@ -1,0 +1,156 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <AssemblyName>BossRespawnOverlay</AssemblyName>
+    <RootNamespace>BossRespawnOverlay</RootNamespace>
+
+    <Version>0.6.0</Version>
+    <AssemblyVersion>0.6.0.0</AssemblyVersion>
+    <FileVersion>0.6.0.0</FileVersion>
+
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+
+    <OutputPath>bin\Release\</OutputPath>
+
+    <!-- Tenta encontrar o V Rising automaticamente. -->
+    <VRisingDir Condition="Exists('C:\Program Files (x86)\Steam\steamapps\common\VRising\VRising.exe')">C:\Program Files (x86)\Steam\steamapps\common\VRising</VRisingDir>
+
+    <VRisingDir Condition="'$(VRisingDir)' == '' and Exists('C:\Steam\steamapps\common\VRising\VRising.exe')">C:\Steam\steamapps\common\VRising</VRisingDir>
+
+    <VRisingDir Condition="'$(VRisingDir)' == '' and Exists('D:\Steam\steamapps\common\VRising\VRising.exe')">D:\Steam\steamapps\common\VRising</VRisingDir>
+
+    <VRisingDir Condition="'$(VRisingDir)' == '' and Exists('D:\SteamLibrary\steamapps\common\VRising\VRising.exe')">D:\SteamLibrary\steamapps\common\VRising</VRisingDir>
+
+    <VRisingDir Condition="'$(VRisingDir)' == '' and Exists('E:\SteamLibrary\steamapps\common\VRising\VRising.exe')">E:\SteamLibrary\steamapps\common\VRising</VRisingDir>
+
+    <BepInExDir>$(VRisingDir)\BepInEx</BepInExDir>
+    <CoreDir>$(BepInExDir)\core</CoreDir>
+    <InteropDir>$(BepInExDir)\interop</InteropDir>
+    <PluginsDir>$(BepInExDir)\plugins</PluginsDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Impede a compilação de arquivos antigos ou temporários. -->
+    <Compile Remove="_backups\**\*.cs" />
+    <Compile Remove="obj-test\**\*.cs" />
+
+    <None Remove="_backups\**" />
+    <None Remove="obj-test\**" />
+    <None Remove="build-test\**" />
+
+    <!-- BepInEx -->
+    <Reference Include="BepInEx.Core">
+      <HintPath>$(CoreDir)\BepInEx.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="BepInEx.Unity.IL2CPP">
+      <HintPath>$(CoreDir)\BepInEx.Unity.IL2CPP.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- Harmony -->
+    <Reference Include="0Harmony">
+      <HintPath>$(CoreDir)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- IL2CPP -->
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(CoreDir)\Il2CppInterop.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="Il2Cppmscorlib">
+      <HintPath>$(InteropDir)\Il2Cppmscorlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- V Rising -->
+    <Reference Include="ProjectM">
+      <HintPath>$(InteropDir)\ProjectM.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="ProjectM.Shared">
+      <HintPath>$(InteropDir)\ProjectM.Shared.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="ProjectM.HUD">
+      <HintPath>$(InteropDir)\ProjectM.HUD.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- Unity -->
+    <Reference Include="Unity.Collections">
+      <HintPath>$(InteropDir)\Unity.Collections.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="Unity.Entities">
+      <HintPath>$(InteropDir)\Unity.Entities.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(InteropDir)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(InteropDir)\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(InteropDir)\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- Interface utilizada pelo servidor Sangria -->
+    <Reference Include="SangrisInterface">
+      <HintPath>$(PluginsDir)\SangrisInterface.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Mostra um erro claro caso o jogo não seja localizado. -->
+  <Target Name="ValidateVRisingInstallation" BeforeTargets="ResolveReferences">
+    <Error
+      Condition="'$(VRisingDir)' == ''"
+      Text="A pasta do V Rising não foi localizada. Edite a propriedade VRisingDir no BossRespawnOverlay.csproj." />
+
+    <Error
+      Condition="!Exists('$(CoreDir)\BepInEx.Core.dll')"
+      Text="BepInEx.Core.dll não foi encontrada em: $(CoreDir)" />
+
+    <Error
+      Condition="!Exists('$(InteropDir)\ProjectM.dll')"
+      Text="ProjectM.dll não foi encontrada em: $(InteropDir)" />
+
+    <Error
+      Condition="!Exists('$(PluginsDir)\SangrisInterface.dll')"
+      Text="SangrisInterface.dll não foi encontrada em: $(PluginsDir)" />
+  </Target>
+
+  <!-- Copia somente a DLL compilada para a pasta plugins. -->
+  <Target Name="InstallPluginInGame" AfterTargets="Build">
+    <Copy
+      SourceFiles="$(TargetPath)"
+      DestinationFiles="$(PluginsDir)\BossRespawnOverlay.dll"
+      SkipUnchangedFiles="true" />
+
+    <Message
+      Text="BossRespawnOverlay.dll instalada em: $(PluginsDir)"
+      Importance="high" />
+  </Target>
+
+</Project>
