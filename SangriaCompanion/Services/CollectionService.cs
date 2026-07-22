@@ -99,7 +99,7 @@ internal static class CollectionService
         if (currentAmount >= required)
         {
             if (CompletedRequirementKeys.Add(key))
-                NotificationCenter.Enqueue(itemName, "Quantidade suficiente: " + currentAmount + " / " + required + ".", SCTheme.Green, 5f, "Coleta");
+                NotificationCenter.Enqueue(itemName, "Quantidade suficiente: " + currentAmount + " / " + required + ".", SCTheme.Green, Plugin.CollectionAlertDuration.Value, "Coleta");
         }
         else
         {

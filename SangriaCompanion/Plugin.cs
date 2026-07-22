@@ -15,7 +15,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string PluginGuid = "alvaro.vrising.sangriacompanion";
     public const string PluginName = "Sangria Companion";
-    public const string PluginVersion = "2.2.0";
+    public const string PluginVersion = "2.3.0";
 
     internal static Plugin Instance { get; private set; } = null!;
     internal static CompanionBehaviour Behaviour { get; private set; } = null!;
@@ -48,6 +48,14 @@ public sealed class Plugin : BasePlugin
     internal static ConfigEntry<string> EventAlertsSelected { get; private set; } = null!;
     internal static ConfigEntry<float> EventAlertDuration { get; private set; } = null!;
     internal static ConfigEntry<bool> AlwaysShowNotifications { get; private set; } = null!;
+
+    internal static ConfigEntry<bool> MuteAllNotifications { get; private set; } = null!;
+    internal static ConfigEntry<bool> CollectionAlertsEnabled { get; private set; } = null!;
+    internal static ConfigEntry<bool> TrackerAlertsEnabled { get; private set; } = null!;
+    internal static ConfigEntry<bool> RecipeAlertsEnabled { get; private set; } = null!;
+    internal static ConfigEntry<float> CollectionAlertDuration { get; private set; } = null!;
+    internal static ConfigEntry<string> EventAlertThresholds { get; private set; } = null!;
+    internal static ConfigEntry<string> BossAlertThresholds { get; private set; } = null!;
 
     internal static ConfigEntry<bool> DashboardAlive { get; private set; } = null!;
     internal static ConfigEntry<bool> DashboardDead { get; private set; } = null!;
@@ -101,6 +109,14 @@ public sealed class Plugin : BasePlugin
         EventAlertDuration = Config.Bind("Events", "AlertDurationSeconds", 6f, "Duração do aviso de evento na tela.");
         AlwaysShowNotifications = Config.Bind("Notifications", "AlwaysShow", true, "Mantém os avisos visíveis mesmo com o painel e as HUDs compactas fechados.");
 
+        MuteAllNotifications = Config.Bind("Notifications", "MuteAll", false, "Silencia todos os avisos do Companion.");
+        CollectionAlertsEnabled = Config.Bind("Notifications", "CollectionAlertsEnabled", true, "Ativa avisos de coleta e conclusão de requisitos.");
+        TrackerAlertsEnabled = Config.Bind("Notifications", "TrackerAlertsEnabled", true, "Ativa avisos relacionados ao rastreador.");
+        RecipeAlertsEnabled = Config.Bind("Notifications", "RecipeAlertsEnabled", true, "Ativa avisos relacionados a receitas.");
+        CollectionAlertDuration = Config.Bind("Notifications", "CollectionAlertDurationSeconds", 5f, "Duração dos avisos de coleta na tela.");
+        EventAlertThresholds = Config.Bind("Events", "AlertThresholdsSeconds", "3600,1800,1200,900,600,300,60", "Antecedências dos eventos em segundos, separadas por vírgula.");
+        BossAlertThresholds = Config.Bind("Bosses", "AlertThresholdsSeconds", "600,300,120,60", "Marcos de respawn dos bosses em segundos, separados por vírgula.");
+
         DashboardAlive = Config.Bind("Dashboard", "ShowAliveBosses", true, "Exibe bosses vivos.");
         DashboardDead = Config.Bind("Dashboard", "ShowDeadBosses", true, "Exibe bosses mortos.");
         DashboardFavorites = Config.Bind("Dashboard", "ShowFavoriteCount", true, "Exibe quantidade de favoritos.");
@@ -130,23 +146,9 @@ public sealed class Plugin : BasePlugin
             Log.LogWarning("Alguns patches opcionais não foram aplicados: " + ex.Message);
         }
 
-        try
-        {
-            InputSystemSuppressionPatches.Apply(_harmony);
-        }
-        catch (Exception ex)
-        {
-            Log.LogWarning("O bloqueio adicional do novo Input System não pôde ser aplicado: " + ex.Message);
-        }
-
-        try
-        {
-            GameplayInputSuppressionPatches.Apply(_harmony);
-        }
-        catch (Exception ex)
-        {
-            Log.LogWarning("O bloqueio interno de gameplay não pôde ser aplicado: " + ex.Message);
-        }
+        // Os patches globais de Input System/ECS foram removidos nesta versão.
+        // Eles bloqueavam também os comandos de movimento (WASD). A interface
+        // passa a consumir somente os eventos de mouse do próprio IMGUI.
 
         _host = new GameObject("SangriaCompanionHost");
         _host.hideFlags = HideFlags.HideAndDontSave;

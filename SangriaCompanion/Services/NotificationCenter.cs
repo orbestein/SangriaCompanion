@@ -12,11 +12,43 @@ internal static class NotificationCenter
     private static readonly Dictionary<string, float> RecentKeys = new(StringComparer.OrdinalIgnoreCase);
     private static CompanionNotification? _current;
     private static float _visibleUntil;
+    private static float _mutedUntil;
+    private static bool _mutedUntilRestart;
+
+    internal static bool IsTemporarilyMuted => _mutedUntilRestart || Time.unscaledTime < _mutedUntil;
+
+    internal static void MuteFor(float seconds)
+    {
+        _mutedUntilRestart = false;
+        _mutedUntil = Mathf.Max(_mutedUntil, Time.unscaledTime + Mathf.Max(1f, seconds));
+        ClearCurrent();
+    }
+
+    internal static void MuteUntilRestart()
+    {
+        _mutedUntilRestart = true;
+        ClearCurrent();
+    }
+
+    internal static void ClearTemporaryMute()
+    {
+        _mutedUntilRestart = false;
+        _mutedUntil = 0f;
+    }
+
+    private static void ClearCurrent()
+    {
+        Pending.Clear();
+        _current = null;
+        _visibleUntil = 0f;
+    }
 
     internal static IReadOnlyList<NotificationHistoryItem> Recent => History;
 
     internal static void Enqueue(string title, string message, Color accent, float duration, string category)
     {
+        if (!IsCategoryEnabled(category)) return;
+
         // Segunda barreira contra spam: a mesma notificação não entra novamente na
         // fila durante 30 segundos, ainda que outra integração repita o estado.
         var key = $"{category}|{title}|{message}";
@@ -27,6 +59,20 @@ internal static class NotificationCenter
         Pending.Enqueue(item);
         History.Insert(0, new NotificationHistoryItem(title, message, category, item.CreatedAt));
         if (History.Count > 40) History.RemoveRange(40, History.Count - 40);
+    }
+
+    private static bool IsCategoryEnabled(string category)
+    {
+        if (Plugin.MuteAllNotifications.Value || IsTemporarilyMuted) return false;
+        return category switch
+        {
+            "Boss" => Plugin.BossAlertsEnabled.Value,
+            "Evento" => Plugin.EventAlertsEnabled.Value,
+            "Coleta" => Plugin.CollectionAlertsEnabled.Value,
+            "Rastreador" => Plugin.TrackerAlertsEnabled.Value,
+            "Receita" => Plugin.RecipeAlertsEnabled.Value,
+            _ => true
+        };
     }
 
     internal static void Update()

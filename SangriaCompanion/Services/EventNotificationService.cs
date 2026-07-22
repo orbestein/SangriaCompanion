@@ -24,9 +24,13 @@ internal static class EventNotificationService
 
             if (!occurrence.IsActive)
             {
-                TryFire(startKey + "|600", seconds <= 600 && seconds > 570, occurrence.Name, "Começa em " + EventScheduleService.FormatCountdown(occurrence.UntilStart) + " (10 minutos).", SCTheme.Gold);
-                TryFire(startKey + "|300", seconds <= 300 && seconds > 270, occurrence.Name, "Começa em " + EventScheduleService.FormatCountdown(occurrence.UntilStart) + " (5 minutos).", SCTheme.Gold);
-                TryFire(startKey + "|60", seconds <= 60 && seconds > 30, occurrence.Name, "Começa em " + EventScheduleService.FormatCountdown(occurrence.UntilStart) + " (1 minuto).", SCTheme.Gold);
+                foreach (var threshold in ParseThresholds())
+                {
+                    // Janela de 30 segundos compatível com o ciclo de atualização.
+                    var condition = seconds <= threshold && seconds > threshold - 30;
+                    TryFire(startKey + "|" + threshold, condition, occurrence.Name,
+                        "Começa em " + EventScheduleService.FormatCountdown(occurrence.UntilStart) + " (aviso configurado).", SCTheme.Gold);
+                }
                 TryFire(startKey + "|start", seconds <= 2 && seconds >= -2, occurrence.Name, "COMEÇOU!", SCTheme.Green);
             }
             else
@@ -45,6 +49,14 @@ internal static class EventNotificationService
         Plugin.EventAlertsSelected.Value = string.Join(",", selected.OrderBy(x => x));
         Plugin.SaveState();
     }
+
+    internal static int[] ParseThresholds() => (Plugin.EventAlertThresholds.Value ?? string.Empty)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(x => int.TryParse(x, out var value) ? value : 0)
+        .Where(x => x >= 30 && x <= 86400)
+        .Distinct()
+        .OrderByDescending(x => x)
+        .ToArray();
 
     private static HashSet<string> ParseSelected() => Plugin.EventAlertsSelected.Value
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

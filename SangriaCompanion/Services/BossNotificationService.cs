@@ -15,7 +15,13 @@ internal static class BossNotificationService
 
     private static readonly Dictionary<string, State> States = new(StringComparer.OrdinalIgnoreCase);
     private static float _nextCheck;
-    private static readonly int[] Thresholds = [600, 300, 60];
+    internal static int[] ParseThresholds() => (Plugin.BossAlertThresholds.Value ?? string.Empty)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(x => int.TryParse(x, out var value) ? value : 0)
+        .Where(x => x >= 5 && x <= 3600)
+        .Distinct()
+        .OrderByDescending(x => x)
+        .ToArray();
 
     internal static void Update()
     {
@@ -89,7 +95,7 @@ internal static class BossNotificationService
 
                 if (alertsAllowed)
                 {
-                    foreach (var threshold in Thresholds)
+                    foreach (var threshold in ParseThresholds())
                         FireWhenCrossed(state, boss, threshold);
 
                     var custom = Mathf.Clamp(Plugin.BossAlertSeconds.Value, 5, 600);
@@ -120,7 +126,7 @@ internal static class BossNotificationService
 
     private static void PrimePassedThresholds(State state, float remaining)
     {
-        foreach (var threshold in Thresholds)
+        foreach (var threshold in ParseThresholds())
             if (remaining <= threshold) state.FiredThresholds.Add(threshold);
 
         var custom = Mathf.Clamp(Plugin.BossAlertSeconds.Value, 5, 600);

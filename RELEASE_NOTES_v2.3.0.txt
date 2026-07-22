@@ -1,0 +1,21 @@
+Sangria Companion v2.3.0
+
+Correções
+- Corrigido o bloqueio de movimentação (WASD) com a HUD aberta.
+- Removido o reset global dos eixos de entrada.
+- O bloqueio legado agora atua somente nos botões do mouse durante interação real com a interface.
+- Removidos patches globais do novo Input System/ECS que bloqueavam movimento e habilidades.
+
+Novidades
+- Silenciar todos os avisos.
+- Ativar/desativar avisos de bosses, eventos, coletas e rastreador.
+- Silêncio temporário por 1 hora.
+- Silêncio até reiniciar o jogo.
+- Reativação imediata dos avisos.
+- Presets de antecedência para eventos.
+- Presets de respawn para bosses.
+- Duração configurável dos avisos de evento, boss e coleta.
+- Botão para restaurar configurações padrão.
+
+Observação
+- É necessário compilar no Windows com o V Rising e o BepInEx instalados para gerar a DLL atualizada.

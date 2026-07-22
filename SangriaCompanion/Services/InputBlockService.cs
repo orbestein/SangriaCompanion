@@ -20,12 +20,11 @@ internal static class InputBlockService
 
     internal static bool IsBlocked => Time.unscaledTime < _blockedUntil;
 
+    // Não use a simples abertura do painel como motivo para zerar todo o input:
+    // isso também bloqueia WASD. A captura é limitada à interação efetiva com a UI.
     internal static bool ShouldSuppressGameplayInput =>
-        IsBlocked ||
-        _panelOpen ||
         _textEntryActive ||
-        Time.unscaledTime < _pointerCaptureUntil ||
-        IsPointerOverCompanion();
+        Time.unscaledTime < _pointerCaptureUntil;
 
     internal static void BeginGuiFrame()
     {
@@ -61,13 +60,12 @@ internal static class InputBlockService
     {
         _blockedUntil = Mathf.Max(_blockedUntil, Time.unscaledTime + seconds);
         _pointerCaptureUntil = Mathf.Max(_pointerCaptureUntil, Time.unscaledTime + seconds);
-        Input.ResetInputAxes();
     }
 
     internal static void Update()
     {
-        if (!ShouldSuppressGameplayInput) return;
-        Input.ResetInputAxes();
+        // Intencionalmente não chama Input.ResetInputAxes(). Esse método zera os
+        // eixos de movimento e impedia o personagem de andar com a HUD aberta.
     }
 
     internal static void ObservePointer(Rect rect)
@@ -75,10 +73,10 @@ internal static class InputBlockService
         var current = Event.current;
         if (current == null || !rect.Contains(current.mousePosition)) return;
 
-        _pointerCaptureUntil = Mathf.Max(_pointerCaptureUntil, Time.unscaledTime + 0.35f);
-
+        // Apenas eventos reais de mouse capturam o gameplay. O simples hover não
+        // deve bloquear movimento, habilidades de teclado ou interação normal.
         if (current.type is EventType.MouseDown or EventType.MouseUp or EventType.MouseDrag or EventType.ScrollWheel)
-            BlockFor(0.65f);
+            BlockFor(0.12f);
     }
 
     internal static void ConsumeCurrentMouseEvent(Rect rect)

@@ -33,9 +33,16 @@ internal static class InputBoolSuppressionPatch
         }
     }
 
-    private static bool Prefix(ref bool __result)
+    private static bool Prefix(MethodBase __originalMethod, ref bool __result)
     {
         if (!InputBlockService.ShouldSuppressGameplayInput) return true;
+
+        // Não bloqueia GetKey/GetButton: essas APIs também carregam WASD e
+        // habilidades. Apenas os métodos de mouse são suprimidos enquanto a UI
+        // está consumindo um clique/drag/scroll.
+        if (!__originalMethod.Name.StartsWith("GetMouseButton", StringComparison.Ordinal))
+            return true;
+
         __result = false;
         return false;
     }
@@ -54,9 +61,8 @@ internal static class InputAxisSuppressionPatch
 
     private static bool Prefix(ref float __result)
     {
-        if (!InputBlockService.ShouldSuppressGameplayInput) return true;
-        __result = 0f;
-        return false;
+        // Nunca zera eixos globais: Horizontal/Vertical são usados pelo WASD.
+        return true;
     }
 }
 
