@@ -15,7 +15,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string PluginGuid = "alvaro.vrising.sangriacompanion";
     public const string PluginName = "Sangria Companion";
-    public const string PluginVersion = "2.3.2";
+    public const string PluginVersion = "2.6.1";
 
     internal static Plugin Instance { get; private set; } = null!;
     internal static CompanionBehaviour Behaviour { get; private set; } = null!;
@@ -37,12 +37,6 @@ public sealed class Plugin : BasePlugin
     internal static ConfigEntry<bool> FavoriteBossHudEnabled { get; private set; } = null!;
     internal static ConfigEntry<float> FavoriteBossHudX { get; private set; } = null!;
     internal static ConfigEntry<float> FavoriteBossHudY { get; private set; } = null!;
-    internal static ConfigEntry<string> TrackedBossCommand { get; private set; } = null!;
-    internal static ConfigEntry<bool> TrackerHudEnabled { get; private set; } = null!;
-    internal static ConfigEntry<float> TrackerHudX { get; private set; } = null!;
-    internal static ConfigEntry<float> TrackerHudY { get; private set; } = null!;
-    internal static ConfigEntry<float> TrackerRefreshInterval { get; private set; } = null!;
-    internal static ConfigEntry<KeyCode> TrackerRefreshKey { get; private set; } = null!;
 
     internal static ConfigEntry<bool> EventAlertsEnabled { get; private set; } = null!;
     internal static ConfigEntry<string> EventAlertsSelected { get; private set; } = null!;
@@ -54,8 +48,10 @@ public sealed class Plugin : BasePlugin
 
     internal static ConfigEntry<bool> MuteAllNotifications { get; private set; } = null!;
     internal static ConfigEntry<bool> CollectionAlertsEnabled { get; private set; } = null!;
-    internal static ConfigEntry<bool> TrackerAlertsEnabled { get; private set; } = null!;
     internal static ConfigEntry<bool> RecipeAlertsEnabled { get; private set; } = null!;
+    internal static ConfigEntry<bool> SessionDropAlertsEnabled { get; private set; } = null!;
+    internal static ConfigEntry<string> SessionDropKeywords { get; private set; } = null!;
+    internal static ConfigEntry<string> SessionDropActMappings { get; private set; } = null!;
     internal static ConfigEntry<float> CollectionAlertDuration { get; private set; } = null!;
     internal static ConfigEntry<string> EventAlertThresholds { get; private set; } = null!;
     internal static ConfigEntry<string> BossAlertThresholds { get; private set; } = null!;
@@ -100,12 +96,6 @@ public sealed class Plugin : BasePlugin
         FavoriteBossHudEnabled = Config.Bind("Bosses", "FavoriteHudEnabled", true, "Exibe uma HUD pequena somente com os bosses favoritos.");
         FavoriteBossHudX = Config.Bind("Bosses", "FavoriteHudX", 72f, "Posição horizontal da HUD de bosses favoritos.");
         FavoriteBossHudY = Config.Bind("Bosses", "FavoriteHudY", 118f, "Posição vertical da HUD de bosses favoritos.");
-        TrackedBossCommand = Config.Bind("Bosses", "TrackedBoss", string.Empty, "Boss selecionado no rastreador do Companion.");
-        TrackerHudEnabled = Config.Bind("Tracker", "CompactHudEnabled", true, "Exibe a HUD compacta do boss acompanhado fora da janela principal.");
-        TrackerHudX = Config.Bind("Tracker", "CompactHudX", 74f, "Posição horizontal da HUD compacta.");
-        TrackerHudY = Config.Bind("Tracker", "CompactHudY", 116f, "Posição vertical da HUD compacta.");
-        TrackerRefreshInterval = Config.Bind("Tracker", "RefreshIntervalSeconds", 20f, "Intervalo automático de atualização do boss acompanhado, entre 10 e 120 segundos.");
-        TrackerRefreshKey = Config.Bind("Tracker", "RefreshKey", KeyCode.F8, "Tecla para consultar imediatamente o boss acompanhado.");
 
         EventAlertsEnabled = Config.Bind("Events", "AlertsEnabled", true, "Ativa avisos de eventos na tela.");
         EventAlertsSelected = Config.Bind("Events", "SelectedAlerts", "Chefe Supremo,Dantos Sangrentum,Piracema,Investida Cientifica / Invasao", "Eventos com alertas ativos, separados por vírgula.");
@@ -117,8 +107,14 @@ public sealed class Plugin : BasePlugin
 
         MuteAllNotifications = Config.Bind("Notifications", "MuteAll", false, "Silencia todos os avisos do Companion.");
         CollectionAlertsEnabled = Config.Bind("Notifications", "CollectionAlertsEnabled", true, "Ativa avisos de coleta e conclusão de requisitos.");
-        TrackerAlertsEnabled = Config.Bind("Notifications", "TrackerAlertsEnabled", true, "Ativa avisos relacionados ao rastreador.");
         RecipeAlertsEnabled = Config.Bind("Notifications", "RecipeAlertsEnabled", true, "Ativa avisos relacionados a receitas.");
+        SessionDropAlertsEnabled = Config.Bind("Notifications", "PetSoulAlertsEnabled", true, "Exibe um aviso ao obter um pet ou uma alma durante a sessão.");
+        SessionDropKeywords = Config.Bind("SessionDrops", "AdditionalKeywords", "pet,familiar,companion,summon,soulshard,alma", "Palavras adicionais usadas para reconhecer itens de pet ou alma.");
+        SessionDropActMappings = Config.Bind(
+            "SessionDrops",
+            "ActMappings",
+            "morgana=4,soulshardmonster=4,manticore=4",
+            "Mapeamentos manuais no formato nome=ato, separados por vírgula. Exemplo: morgana=4,lobo=1.");
         CollectionAlertDuration = Config.Bind("Notifications", "CollectionAlertDurationSeconds", 5f, "Duração dos avisos de coleta na tela.");
         EventAlertThresholds = Config.Bind("Events", "AlertThresholdsSeconds", "3600,1800,1200,900,600,300,60", "Antecedências dos eventos em segundos, separadas por vírgula.");
         BossAlertThresholds = Config.Bind("Bosses", "AlertThresholdsSeconds", "600,300,120,60", "Marcos de respawn dos bosses em segundos, separados por vírgula.");

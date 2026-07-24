@@ -1,7 +1,0 @@
-Sangria Companion v2.3.1
-
-- Restaurada a mini HUD dos bosses favoritos.
-- A HUD não desaparece enquanto os dados do servidor estão sincronizando.
-- Nova mini HUD de eventos com evento ativo e próximos eventos.
-- Alternadores independentes para mini HUD de bosses e mini HUD de eventos.
-- Ambas podem ser movidas e fechadas na própria interface.

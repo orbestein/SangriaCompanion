@@ -42,7 +42,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string PluginGuid = "lucas.vrising.bossrespawnoverlay";
     public const string PluginName = "Boss Respawn Overlay";
-    public const string PluginVersion = "0.6.3-bridge";
+    public const string PluginVersion = "0.7.0-global-sync";
 
     internal static readonly BossDefinition[] DefaultBosses =
     [
@@ -279,11 +279,8 @@ public sealed class Plugin : BasePlugin
 
 internal sealed class BossRespawnOverlayBehaviour : MonoBehaviour
 {
-    private const float RequestTimeoutSeconds = 5f;
-    // O servidor tolera a consulta individual, mas pode ignorar mensagens
-    // quando várias chegam em sequência muito rápida. Um boss por segundo
-    // completa a lista de 30 dentro de um ciclo de aproximadamente 30 s.
-    private const float GapBetweenBossQueriesSeconds = 0.75f;
+    private const float RequestTimeoutSeconds = 20f;
+    private const float GlobalResponseQuietSeconds = 3f;
 
     private static ComponentType[]? _networkEventComponents;
 
@@ -343,12 +340,10 @@ internal sealed class BossRespawnOverlayBehaviour : MonoBehaviour
     private float _notificationVisibleUntil;
     private float _nextQueryAt;
     private float _requestSentAt = -1f;
-    private int _activeBossIndex = -1;
-    private int _nextBossIndex;
-    private int _nextPinnedIndex;
-    private int _forcedBossIndex = -1;
-    private int _pollCycle;
-    private bool _activeRequestWasPinned;
+    private float _lastGlobalResponseAt = -1f;
+    private bool _globalRequestActive;
+    private bool _globalHeaderSeen;
+    private readonly HashSet<int> _globalResponseBossIndexes = new();
     private bool _loggedUnknownResponse;
     private bool _overlayShown;
     private readonly bool[] _expandedActs = new bool[4];
@@ -361,9 +356,6 @@ internal sealed class BossRespawnOverlayBehaviour : MonoBehaviour
 
     private int OverlayFontSize => Mathf.Clamp(Plugin.FontSize.Value, 12, 16);
 
-    private BossState? ActiveBoss => _activeBossIndex >= 0 && _activeBossIndex < _bosses.Count
-        ? _bosses[_activeBossIndex]
-        : null;
 
     private void Awake()
     {
@@ -377,7 +369,7 @@ internal sealed class BossRespawnOverlayBehaviour : MonoBehaviour
             }
         }
 
-        Plugin.Instance.Log.LogInfo($"Lista de bosses consultada ({_bosses.Count}): {string.Join(" -> ", _bosses.Select(boss => $"{boss.DisplayName} ({boss.Level}) [.boss tempo {boss.CommandName}]"))}");
+        Plugin.Instance.Log.LogInfo($"Sincronização global preparada para {_bosses.Count} bosses usando um único comando [.boss tempo].");
         _nextQueryAt = Time.unscaledTime + Mathf.Max(0.5f, Plugin.InitialDelaySeconds.Value);
     }
 
@@ -539,17 +531,11 @@ private void SaveExpandedActs()
 
     private void Update()
     {
-        if (!Plugin.Enabled.Value)
-        {
-            return;
-        }
+        if (!Plugin.Enabled.Value) return;
 
         foreach (var boss in _bosses)
         {
-            if (!boss.HasResponse || boss.HasError)
-            {
-                continue;
-            }
+            if (!boss.HasResponse || boss.HasError) continue;
 
             if (boss.IsAlive)
             {
@@ -559,42 +545,35 @@ private void SaveExpandedActs()
             }
 
             boss.PreviousRemainingSeconds = boss.RemainingSeconds;
-            boss.RemainingSeconds = Mathf.Max(
-                0f,
-                boss.RemainingSeconds - Time.unscaledDeltaTime);
+            boss.RemainingSeconds = Mathf.Max(0f, boss.RemainingSeconds - Time.unscaledDeltaTime);
 
             var notificationAt = Mathf.Max(1, Plugin.NotificationAtSeconds.Value);
+            if (boss.RemainingSeconds > notificationAt + 2f) boss.NotificationShown = false;
 
-            // Libera uma nova notificação apenas quando o boss voltou a ficar
-            // acima da janela configurada, evitando repetição no mesmo respawn.
-            if (boss.RemainingSeconds > notificationAt + 2f)
-            {
-                boss.NotificationShown = false;
-            }
-
-            if (Plugin.NotificationEnabled.Value &&
-                boss.IsPinned &&
-                !boss.NotificationShown &&
-                boss.RemainingSeconds > 0f &&
-                boss.RemainingSeconds <= notificationAt)
+            if (Plugin.NotificationEnabled.Value && boss.IsPinned && !boss.NotificationShown &&
+                boss.RemainingSeconds > 0f && boss.RemainingSeconds <= notificationAt)
             {
                 ShowBossNotification(boss);
             }
         }
 
-        var activeBoss = ActiveBoss;
-        if (activeBoss != null && Time.unscaledTime - _requestSentAt > RequestTimeoutSeconds)
+        if (_globalRequestActive)
         {
-            Plugin.Instance.Log.LogWarning($"O comando .boss tempo {activeBoss.CommandName} não respondeu dentro do timeout.");
-            CompleteActiveRequest();
+            var elapsed = Time.unscaledTime - _requestSentAt;
+            var quiet = _lastGlobalResponseAt >= 0f && Time.unscaledTime - _lastGlobalResponseAt >= GlobalResponseQuietSeconds;
+
+            if ((_globalHeaderSeen && quiet) || elapsed >= RequestTimeoutSeconds)
+            {
+                if (elapsed >= RequestTimeoutSeconds && !_globalHeaderSeen)
+                    Plugin.Instance.Log.LogWarning("O comando global .boss tempo não respondeu dentro do timeout.");
+
+                CompleteGlobalRequest(_globalHeaderSeen);
+            }
+            return;
         }
 
-        if (ActiveBoss == null && Time.unscaledTime >= _nextQueryAt)
-        {
-            TrySendBossQuery();
-        }
+        if (Time.unscaledTime >= _nextQueryAt) TrySendGlobalBossQuery();
     }
-
 
     private void ShowBossNotification(BossState boss)
     {
@@ -614,144 +593,77 @@ private void SaveExpandedActs()
 
     internal void HandleChatUpdate(ClientChatSystem chatSystem)
     {
-        // ClientChatPatch.LocalUser/LocalCharacter pertencem ao mundo do chat.
-        // Uma Entity nunca pode ser consultada por outro EntityManager/world.
         _clientWorld = chatSystem.World;
-
-        var activeBoss = ActiveBoss;
-        if (activeBoss == null)
-        {
-            return;
-        }
+        if (!_globalRequestActive) return;
 
         NativeArray<Entity> entities = default;
         try
         {
             entities = chatSystem._ReceiveChatMessagesQuery.ToEntityArray(Allocator.Temp);
             var entityManager = chatSystem.World.EntityManager;
-            var completed = false;
 
             foreach (var entity in entities)
             {
-                if (!entityManager.Exists(entity) || !entityManager.HasComponent<ChatMessageServerEvent>(entity))
-                {
-                    continue;
-                }
+                if (!entityManager.Exists(entity) || !entityManager.HasComponent<ChatMessageServerEvent>(entity)) continue;
 
                 var message = entityManager.GetComponentData<ChatMessageServerEvent>(entity);
-                var text = message.MessageText.Value;
-                if (!LooksLikeBossResponse(text, activeBoss))
+                var rawText = message.MessageText.Value;
+                var text = NormalizeServerLine(rawText);
+
+                if (IsGlobalBossHeader(text))
                 {
+                    _globalHeaderSeen = true;
+                    _lastGlobalResponseAt = Time.unscaledTime;
+                    entityManager.DestroyEntity(entity);
                     continue;
                 }
 
-                if (TryApplyResponse(text, activeBoss, out var responseCompleted))
+                // Só aceitamos linhas de boss depois do cabeçalho oficial. Isso
+                // evita interpretar mensagens comuns do chat que contenham nome
+                // de boss e horário como parte da resposta automática.
+                if (!_globalHeaderSeen) continue;
+
+                var boss = FindBossInResponse(text);
+                if (boss == null) continue;
+
+                if (TryApplyGlobalResponse(text, boss))
                 {
-                    completed |= responseCompleted;
+                    _globalHeaderSeen = true;
+                    _lastGlobalResponseAt = Time.unscaledTime;
+                    _globalResponseBossIndexes.Add(boss.Index);
                     _loggedUnknownResponse = false;
+                    entityManager.DestroyEntity(entity);
                 }
                 else if (!_loggedUnknownResponse)
                 {
                     _loggedUnknownResponse = true;
-                    Plugin.LogUnknownMessage(text);
+                    Plugin.LogUnknownMessage(rawText);
                 }
-
-                // A consulta e as linhas de resposta são mensagens do protocolo
-                // de chat. Removê-las aqui impede que apareçam no chat do jogador.
-                entityManager.DestroyEntity(entity);
-            }
-
-            if (completed)
-            {
-                CompleteActiveRequest();
             }
         }
         catch (Exception ex)
         {
-            Plugin.Instance.Log.LogError($"Falha ao ler resposta de boss: {ex}");
+            Plugin.Instance.Log.LogError($"Falha ao ler resposta global de bosses: {ex}");
         }
         finally
         {
-            if (entities.IsCreated)
-            {
-                entities.Dispose();
-            }
+            if (entities.IsCreated) entities.Dispose();
         }
     }
 
     internal void NotifyManualChatCommand(string text)
     {
         if (string.IsNullOrWhiteSpace(text) ||
-            !text.TrimStart().StartsWith(".boss tempo", StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
+            !text.TrimStart().StartsWith(".boss tempo", StringComparison.OrdinalIgnoreCase)) return;
 
-        // Uma resposta manual nunca deve ser consumida pelo overlay. Se ela
-        // acontecer durante uma consulta automática, cancelamos esta consulta;
-        // sem um request-id no protocolo do servidor, as duas respostas seriam
-        // indistinguíveis depois que chegassem ao cliente.
-        if (ActiveBoss != null)
+        if (_globalRequestActive)
         {
-            Plugin.Instance.Log.LogDebug("Consulta automática cancelada para preservar resposta de comando manual.");
-            CompleteActiveRequest();
+            Plugin.Instance.Log.LogDebug("Sincronização automática global cancelada para preservar a resposta do comando manual.");
+            CancelGlobalRequest();
         }
     }
 
-    private List<BossState> GetPinnedBossesForPolling()
-    {
-        return _bosses
-            .Where(boss => boss.IsPinned)
-            .OrderBy(boss => boss.Index)
-            .ToList();
-    }
-
-    private BossState? SelectNextScheduledBoss(out bool isPreferred)
-    {
-        var pinnedBosses = GetPinnedBossesForPolling();
-        if (_bosses.Count == 0)
-        {
-            isPreferred = false;
-            return null;
-        }
-
-        // Mantém uma consulta geral a cada cinco consultas para que a lista
-        // completa continue atualizando, mas dá prioridade real aos fixados.
-        var shouldPollGeneral = pinnedBosses.Count == 0 || (_pollCycle++ % 5) == 4;
-        if (!shouldPollGeneral)
-        {
-            isPreferred = true;
-
-            // Boss morto e próximo do respawn é sempre o mais urgente. Entre
-            // vários candidatos, consulta primeiro o que está há mais tempo
-            // sem receber uma consulta do servidor.
-            return pinnedBosses
-                .OrderByDescending(boss => !boss.IsAlive && boss.RemainingSeconds > 0f && boss.RemainingSeconds <= 90f)
-                .ThenBy(boss => boss.LastQueryAt)
-                .First();
-        }
-
-        isPreferred = false;
-        return _bosses[_nextBossIndex % _bosses.Count];
-    }
-
-    private void AdvanceScheduledBoss(BossState boss, bool wasPreferred)
-    {
-        if (wasPreferred)
-        {
-            var pinnedCount = _bosses.Count(item => item.IsPinned);
-            _nextPinnedIndex = pinnedCount == 0
-                ? 0
-                : (_nextPinnedIndex + 1) % pinnedCount;
-            return;
-        }
-
-        _nextBossIndex = _bosses.Count == 0
-            ? 0
-            : (boss.Index + 1) % _bosses.Count;
-    }
-
-    private void TrySendBossQuery()
+    private void TrySendGlobalBossQuery()
     {
         var localCharacter = ClientChatPatch.LocalCharacter;
         var localUser = ClientChatPatch.LocalUser;
@@ -768,18 +680,7 @@ private void SaveExpandedActs()
             return;
         }
 
-        var isForced = _forcedBossIndex >= 0;
-        var isPreferred = false;
-        var boss = isForced
-            ? _bosses[_forcedBossIndex]
-            : SelectNextScheduledBoss(out isPreferred);
-        if (boss == null)
-        {
-            _nextQueryAt = Time.unscaledTime + 2f;
-            return;
-        }
-
-        var command = $".boss tempo {boss.CommandName}";
+        const string command = ".boss tempo";
         try
         {
             var entityManager = world.EntityManager;
@@ -790,11 +691,7 @@ private void SaveExpandedActs()
             }
 
             var networkEntity = entityManager.CreateEntity(GetNetworkEventComponents());
-            entityManager.SetComponentData(networkEntity, new FromCharacter
-            {
-                Character = localCharacter,
-                User = localUser
-            });
+            entityManager.SetComponentData(networkEntity, new FromCharacter { Character = localCharacter, User = localUser });
             entityManager.SetComponentData(networkEntity, ChatNetworkEventType);
             entityManager.SetComponentData(networkEntity, new ChatMessageEvent
             {
@@ -803,31 +700,56 @@ private void SaveExpandedActs()
                 ReceiverEntity = entityManager.GetComponentData<NetworkId>(localUser)
             });
 
-            _activeBossIndex = boss.Index;
-            _activeRequestWasPinned = boss.IsPinned;
-            boss.LastQueryAt = Time.unscaledTime;
-            _forcedBossIndex = -1;
-            if (!isForced)
-            {
-                AdvanceScheduledBoss(boss, isPreferred);
-            }
+            _globalRequestActive = true;
+            _globalHeaderSeen = false;
+            _globalResponseBossIndexes.Clear();
             _requestSentAt = Time.unscaledTime;
+            _lastGlobalResponseAt = -1f;
             _loggedUnknownResponse = false;
-            Plugin.Instance.Log.LogDebug($"Consulta interna enviada: {command}");
+            Plugin.Instance.Log.LogDebug("Sincronização global enviada: .boss tempo");
         }
         catch (Exception ex)
         {
-            Plugin.Instance.Log.LogError($"Falha ao enviar consulta interna {command}: {ex}");
+            Plugin.Instance.Log.LogError($"Falha ao enviar sincronização global {command}: {ex}");
             _nextQueryAt = Time.unscaledTime + 5f;
         }
     }
 
-    private void CompleteActiveRequest()
+    private void CompleteGlobalRequest(bool applyAliveForMissing)
     {
-        _activeBossIndex = -1;
+        if (applyAliveForMissing)
+        {
+            foreach (var boss in _bosses)
+            {
+                if (_globalResponseBossIndexes.Contains(boss.Index)) continue;
+                boss.HasResponse = true;
+                boss.IsAlive = true;
+                boss.HasError = false;
+                boss.RemainingSeconds = 0f;
+                boss.NotificationShown = false;
+            }
+        }
+
+        if (applyAliveForMissing)
+            Plugin.Instance.Log.LogInfo($"Sincronização global concluída: {_globalResponseBossIndexes.Count} bosses com respawn; {_bosses.Count - _globalResponseBossIndexes.Count} disponíveis.");
+        else
+            Plugin.Instance.Log.LogWarning("Sincronização global encerrada sem cabeçalho válido; o cache anterior foi preservado.");
+        _globalRequestActive = false;
+        _globalHeaderSeen = false;
+        _globalResponseBossIndexes.Clear();
+        _lastGlobalResponseAt = -1f;
         _loggedUnknownResponse = false;
-        _nextQueryAt = Time.unscaledTime + (_activeRequestWasPinned ? 0.45f : GapBetweenBossQueriesSeconds);
-        _activeRequestWasPinned = false;
+        _nextQueryAt = Time.unscaledTime + Mathf.Max(5f, Plugin.PollIntervalSeconds.Value);
+    }
+
+    private void CancelGlobalRequest()
+    {
+        _globalRequestActive = false;
+        _globalHeaderSeen = false;
+        _globalResponseBossIndexes.Clear();
+        _lastGlobalResponseAt = -1f;
+        _loggedUnknownResponse = false;
+        _nextQueryAt = Time.unscaledTime + Mathf.Max(5f, Plugin.PollIntervalSeconds.Value);
     }
 
     private void TogglePinned(BossState boss)
@@ -841,14 +763,10 @@ private void SaveExpandedActs()
             .Select(item => item.CommandName));
         Plugin.Instance.Config.Save();
 
-        // Atualiza imediatamente o boss recém-fixado.
+        // Um único refresh global atualiza o boss fixado e todo o restante do catálogo.
         if (boss.IsPinned)
         {
-            _forcedBossIndex = boss.Index;
-            if (ActiveBoss != null)
-            {
-                CompleteActiveRequest();
-            }
+            if (_globalRequestActive) CancelGlobalRequest();
             _nextQueryAt = Time.unscaledTime + 0.1f;
         }
     }
@@ -859,21 +777,31 @@ private void SaveExpandedActs()
         boss.IsAlive = false;
         boss.HasError = false;
         boss.RemainingSeconds = 0f;
-        _forcedBossIndex = boss.Index;
-
-        if (ActiveBoss != null)
-        {
-            CompleteActiveRequest();
-        }
-
+        if (_globalRequestActive) CancelGlobalRequest();
         _nextQueryAt = Time.unscaledTime + 0.1f;
         Plugin.Instance.Log.LogDebug($"Boss marcado como morto manualmente na overlay: {boss.DisplayName}.");
     }
 
-    private static bool TryApplyResponse(string rawText, BossState boss, out bool responseCompleted)
+    private static bool IsGlobalBossHeader(string text)
     {
-        responseCompleted = false;
-        var text = StripRichText(rawText);
+        return System.Text.RegularExpressions.Regex.IsMatch(
+            text,
+            @"bosses\s+e\s+respawns",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
+
+    private BossState? FindBossInResponse(string text)
+    {
+        return _bosses
+            .OrderByDescending(boss => boss.DisplayName.Length)
+            .FirstOrDefault(boss =>
+                text.Contains(boss.DisplayName, StringComparison.OrdinalIgnoreCase) ||
+                text.Contains(boss.CommandName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool TryApplyGlobalResponse(string rawText, BossState boss)
+    {
+        var text = NormalizeServerLine(rawText);
         var wasAlive = boss.HasResponse && boss.IsAlive;
         var previousSeconds = boss.RemainingSeconds;
 
@@ -884,73 +812,20 @@ private void SaveExpandedActs()
             boss.HasError = false;
             boss.RemainingSeconds = 0f;
             boss.NotificationShown = false;
-            responseCompleted = true;
             return true;
         }
 
-        if (IsNotFoundText(text))
-        {
-            boss.HasResponse = true;
-            boss.IsAlive = false;
-            boss.HasError = true;
-            boss.RemainingSeconds = 0f;
-            responseCompleted = true;
-            return true;
-        }
-
-        var hasBossStatus =
-            (text.Contains(boss.CommandName, StringComparison.OrdinalIgnoreCase) ||
-             text.Contains(boss.DisplayName, StringComparison.OrdinalIgnoreCase)) &&
-            IsDeadText(text);
-        var hasRespawnTime = TryParseTime(text, out var seconds);
-        if (!hasBossStatus && !hasRespawnTime)
-        {
-            return false;
-        }
+        if (!TryParseTime(text, out var seconds)) return false;
 
         boss.HasResponse = true;
         boss.IsAlive = false;
         boss.HasError = false;
+        boss.RemainingSeconds = Mathf.Max(0f, seconds);
 
-        // Ao detectar a transição VIVO -> MORTO, libera o alerta do novo ciclo.
-        if (wasAlive)
-        {
+        if (wasAlive || previousSeconds <= 0f || seconds > previousSeconds + 5f)
             boss.NotificationShown = false;
-        }
-
-        if (hasRespawnTime)
-        {
-            boss.RemainingSeconds = Mathf.Max(0f, seconds);
-            if (previousSeconds <= 0f || seconds > previousSeconds + 5f)
-            {
-                boss.NotificationShown = false;
-            }
-            responseCompleted = true;
-        }
-        else if (hasBossStatus && wasAlive)
-        {
-            // Atualiza o estado imediatamente, mesmo antes da linha seguinte
-            // da resposta trazer o tempo de respawn.
-            boss.RemainingSeconds = 0f;
-        }
 
         return true;
-    }
-
-    private static bool LooksLikeBossResponse(string text, BossState boss)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        return text.Contains(boss.CommandName, StringComparison.OrdinalIgnoreCase) ||
-               text.Contains(boss.DisplayName, StringComparison.OrdinalIgnoreCase) ||
-               IsNotFoundText(text) ||
-               System.Text.RegularExpressions.Regex.IsMatch(
-                   text,
-                   "\\b(respawn|renasc|cooldown|tempo restante|tempo para)\\b",
-                   System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     }
 
     private static bool IsNotFoundText(string text)
@@ -959,6 +834,17 @@ private void SaveExpandedActs()
             text,
             @"boss\s+n(?:\u00e3o|ao)\s+encontrado",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
+
+    private static string NormalizeServerLine(string text)
+    {
+        var clean = StripRichText(text);
+        // Algumas interfaces incluem prefixos como [14:17] [SISTEMA] no texto.
+        // Removê-los impede que o relógio do chat seja confundido com respawn.
+        return System.Text.RegularExpressions.Regex.Replace(
+            clean,
+            @"^(?:\s*\[[^\]]+\]\s*)+",
+            string.Empty).Trim();
     }
 
     private static string StripRichText(string text)
@@ -1359,7 +1245,7 @@ private void DrawCentralNotification()
         return _bosses.Select(boss => new BossRespawnSnapshot(
             boss.DisplayName, boss.CommandName, boss.Level, boss.HasResponse,
             boss.IsAlive, boss.HasError, boss.IsPinned, boss.RemainingSeconds,
-            ActiveBoss == boss)).ToArray();
+            _globalRequestActive)).ToArray();
     }
 
     internal bool SetPinnedFromCompanion(string nameOrCommand, bool pinned)
@@ -1374,12 +1260,11 @@ private void DrawCentralNotification()
 
     internal bool ForceRefreshFromCompanion(string nameOrCommand)
     {
-        var boss = _bosses.FirstOrDefault(item =>
+        var exists = _bosses.Any(item =>
             item.DisplayName.Equals(nameOrCommand, StringComparison.OrdinalIgnoreCase) ||
             item.CommandName.Equals(nameOrCommand, StringComparison.OrdinalIgnoreCase));
-        if (boss == null) return false;
-        _forcedBossIndex = boss.Index;
-        if (ActiveBoss != null) CompleteActiveRequest();
+        if (!exists) return false;
+        if (_globalRequestActive) CancelGlobalRequest();
         _nextQueryAt = Time.unscaledTime + 0.1f;
         return true;
     }
@@ -1388,7 +1273,7 @@ private void DrawCentralNotification()
     {
         if (!boss.HasResponse)
         {
-            return ActiveBoss == boss ? "consultando..." : "aguardando...";
+            return _globalRequestActive ? "sincronizando..." : "aguardando...";
         }
 
         if (boss.IsAlive)

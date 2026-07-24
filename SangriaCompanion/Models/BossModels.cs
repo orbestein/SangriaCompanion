@@ -10,7 +10,6 @@ internal sealed class CompanionBoss
     internal string CommandName { get; set; } = string.Empty;
     internal int Level { get; set; }
     internal int Act => Level <= 47 ? 1 : Level <= 68 ? 2 : Level <= 75 ? 3 : 4;
-    internal bool IsMobile => MobileBossTrackerService.IsMobile(CommandName);
     internal bool IsFavorite { get; set; }
     internal bool AlertEnabled { get; set; }
     internal CompanionBossStatus Status { get; set; }

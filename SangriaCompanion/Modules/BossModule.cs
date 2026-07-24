@@ -194,7 +194,8 @@ internal sealed class BossModule
         SCTheme.Fill(new Rect(rect.x, rect.y, 4f, rect.height), statusColor);
 
         SCUI.Label(new Rect(rect.x + 12f, rect.y + 8f, rect.width - 126f, 24f), boss.Name, boss.IsFavorite ? styles.Gold : styles.Label);
-        SCUI.Label(new Rect(rect.x + 12f, rect.y + 30f, 82f, 20f), $"Nível {boss.Level}", styles.Muted);
+        var subtitle = $"Nível {boss.Level}";
+        SCUI.Label(new Rect(rect.x + 12f, rect.y + 30f, rect.width - 24f, 20f), subtitle, styles.Muted);
 
         var statusText = boss.Status switch
         {
@@ -214,20 +215,10 @@ internal sealed class BossModule
             BossPreferenceService.Save();
         }
 
-        if (SCUI.Button(new Rect(rect.x + 104f, rect.y + 62f, 78f, 25f), boss.AlertEnabled ? "Alerta: SIM" : "Alerta", styles.Button, true))
+        if (SCUI.Button(new Rect(rect.x + 104f, rect.y + 62f, rect.width - 116f, 25f), boss.AlertEnabled ? "Alerta: SIM" : "Ativar alerta", styles.Button, true))
         {
             boss.AlertEnabled = !boss.AlertEnabled;
             BossPreferenceService.Save();
-        }
-
-        if (SCUI.Button(new Rect(rect.xMax - 82f, rect.y + 62f, 70f, 25f), "Rastrear", styles.Button, true))
-        {
-            state.TrackedBossCommand = boss.CommandName;
-            Plugin.TrackedBossCommand.Value = boss.CommandName;
-            Plugin.SaveState();
-            state.Page = CompanionPage.Tracker;
-            BossRespawnOverlay.BossRespawnApi.Refresh(boss.CommandName);
-            Plugin.Instance.Log.LogInfo($"Boss selecionado no Rastreador: {boss.Name} ({boss.CommandName})");
         }
     }
 

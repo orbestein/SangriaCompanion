@@ -15,7 +15,7 @@ internal sealed class CompanionBehaviour : MonoBehaviour
     private readonly DashboardModule _dashboard = new();
     private readonly BossModule _bosses = new();
     private readonly EventModule _events = new();
-    private readonly TrackerModule _tracker = new();
+    private readonly SessionDropsModule _sessionDrops = new();
     private readonly CollectionModule _collection = new();
     private readonly SettingsModule _settings = new();
 
@@ -23,9 +23,6 @@ internal sealed class CompanionBehaviour : MonoBehaviour
     private Vector2 _dragOffset;
     private float _smoothedFps = 60f;
     private float _nextBossRefresh;
-    private float _nextTrackedBossRefresh;
-    private bool _trackerHudDragging;
-    private Vector2 _trackerHudDragOffset;
     private bool _collectionHudDragging;
     private Vector2 _collectionHudDragOffset;
     private bool _favoriteBossHudDragging;
@@ -38,14 +35,13 @@ internal sealed class CompanionBehaviour : MonoBehaviour
         try
         {
         _state.PanelVisible = Plugin.PanelVisible.Value;
-        _state.TrackedBossCommand = Plugin.TrackedBossCommand.Value ?? string.Empty;
         var scale = Mathf.Clamp(Plugin.UiScale.Value, 0.8f, 1.25f);
         _effectiveScale = CalculateEffectiveScale(scale);
         _state.PanelRect = new Rect(Plugin.PanelX.Value, Plugin.PanelY.Value, BaseWidth * _effectiveScale, GetBaseHeight() * _effectiveScale);
         BossPreferenceService.Load();
         CollectionService.Load();
-        _nextTrackedBossRefresh = Time.unscaledTime + 2f;
-        Plugin.Instance.Log.LogInfo("Sprint 2.3 inicializada: relógio oficial, eventos e bosses reais.");
+        SessionDropService.StartNewSession();
+        Plugin.Instance.Log.LogInfo("Sangria Companion 2.6.1 inicializado: pets e almas da sessão separados por atos.");
                 IsInitialized = true;
             Plugin.Instance.Log.LogInfo("CompanionBehaviour.Awake concluído.");
         }
@@ -71,12 +67,10 @@ internal sealed class CompanionBehaviour : MonoBehaviour
             _nextBossRefresh = Time.unscaledTime + 0.5f;
         }
 
-        ModuleRuntime.Run("Boss acompanhado", UpdateTrackedBoss);
         ModuleRuntime.Run("Alertas de eventos", EventNotificationService.Update);
         ModuleRuntime.Run("Alertas de bosses", BossNotificationService.Update);
         ModuleRuntime.Run("Receitas reais", RecipeDiscoveryService.Update);
         ModuleRuntime.Run("Inventário", InventorySyncService.Update);
-        ModuleRuntime.Run("Rastreador móvel", MobileBossTrackerService.Update);
         ModuleRuntime.Run("Notificações", NotificationCenter.Update);
     }
 
@@ -92,11 +86,10 @@ internal sealed class CompanionBehaviour : MonoBehaviour
             InputBlockService.RegisterScreenArea(_state.PanelRect);
             InputBlockService.ObservePointer(_state.PanelRect);
         }
-        if (Plugin.AlwaysShowNotifications.Value || _state.PanelVisible || Plugin.TrackerHudEnabled.Value || Plugin.CollectionHudEnabled.Value)
+        if (Plugin.AlwaysShowNotifications.Value || _state.PanelVisible || Plugin.CollectionHudEnabled.Value)
             ModuleRuntime.Run("Notificações visuais", () => NotificationCenter.Draw(_styles));
         ModuleRuntime.Run("HUD de bosses favoritos", DrawFavoriteBossHud);
         ModuleRuntime.Run("HUD de eventos", DrawEventHud);
-        ModuleRuntime.Run("HUD do rastreador", DrawTrackedBossHud);
         ModuleRuntime.Run("HUD de coleta", DrawCollectionHud);
         if (!_state.PanelVisible)
         {
@@ -197,7 +190,7 @@ internal sealed class CompanionBehaviour : MonoBehaviour
                 case CompanionPage.Dashboard: _dashboard.Draw(content, _styles); break;
                 case CompanionPage.Bosses: _bosses.Draw(content, _state, _styles); break;
                 case CompanionPage.Events: _events.Draw(content, _styles); break;
-                case CompanionPage.Tracker: _tracker.Draw(content, _state, _styles); break;
+                case CompanionPage.SessionDrops: _sessionDrops.Draw(content, _state, _styles); break;
                 case CompanionPage.Collection: _collection.Draw(content, _state, _styles); break;
                 case CompanionPage.Settings: _settings.Draw(content, _styles); break;
             }
@@ -238,7 +231,7 @@ internal sealed class CompanionBehaviour : MonoBehaviour
         DrawSidebarButton(new Rect(rect.x + 10f, y, rect.width - 20f, itemHeight), CompanionPage.Dashboard, "◆   Dashboard"); y += step;
         DrawSidebarButton(new Rect(rect.x + 10f, y, rect.width - 20f, itemHeight), CompanionPage.Bosses, "◇   Bosses"); y += step;
         DrawSidebarButton(new Rect(rect.x + 10f, y, rect.width - 20f, itemHeight), CompanionPage.Events, "◇   Eventos"); y += step;
-        DrawSidebarButton(new Rect(rect.x + 10f, y, rect.width - 20f, itemHeight), CompanionPage.Tracker, "◇   Rastreador"); y += step;
+        DrawSidebarButton(new Rect(rect.x + 10f, y, rect.width - 20f, itemHeight), CompanionPage.SessionDrops, "◇   Pets e Almas"); y += step;
         DrawSidebarButton(new Rect(rect.x + 10f, y, rect.width - 20f, itemHeight), CompanionPage.Collection, "◇   Coleta e Receitas"); y += step;
         DrawSidebarButton(new Rect(rect.x + 10f, y, rect.width - 20f, itemHeight), CompanionPage.Settings, "◇   Configurações");
 
@@ -600,131 +593,6 @@ internal sealed class CompanionBehaviour : MonoBehaviour
         _state.PanelVisible = visible;
         Plugin.PanelVisible.Value = visible;
         Plugin.SaveState();
-    }
-
-    private void UpdateTrackedBoss()
-    {
-        var command = Plugin.TrackedBossCommand.Value?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(command)) return;
-
-        var interval = Mathf.Clamp(Plugin.TrackerRefreshInterval.Value, 10f, 120f);
-        Plugin.TrackerRefreshInterval.Value = interval;
-
-        var manualRefresh = Input.GetKeyDown(Plugin.TrackerRefreshKey.Value);
-        if (!manualRefresh && Time.unscaledTime < _nextTrackedBossRefresh) return;
-
-        try
-        {
-            BossRespawnOverlay.BossRespawnApi.Refresh(command);
-            _nextTrackedBossRefresh = Time.unscaledTime + interval;
-        }
-        catch (Exception ex)
-        {
-            Plugin.Instance.Log.LogWarning($"Não foi possível atualizar o boss acompanhado: {ex.Message}");
-            _nextTrackedBossRefresh = Time.unscaledTime + 5f;
-        }
-    }
-
-    private void DrawTrackedBossHud()
-    {
-        if (!Plugin.TrackerHudEnabled.Value) return;
-
-        var command = Plugin.TrackedBossCommand.Value?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(command)) return;
-
-        var boss = BossCatalog.All.FirstOrDefault(x =>
-            x.CommandName.Equals(command, StringComparison.OrdinalIgnoreCase) ||
-            x.Name.Equals(command, StringComparison.OrdinalIgnoreCase));
-        if (boss == null) return;
-
-        const float width = 338f;
-        var height = boss.IsMobile ? 194f : 126f;
-        var rect = new Rect(Plugin.TrackerHudX.Value, Plugin.TrackerHudY.Value, width, height);
-        rect.x = Mathf.Clamp(rect.x, 0f, Mathf.Max(0f, Screen.width - rect.width));
-        rect.y = Mathf.Clamp(rect.y, 0f, Mathf.Max(0f, Screen.height - rect.height));
-        Plugin.TrackerHudX.Value = rect.x;
-        Plugin.TrackerHudY.Value = rect.y;
-
-        InputBlockService.RegisterScreenArea(rect);
-        InputBlockService.ObservePointer(rect);
-        HandleTrackerHudDragging(rect);
-        rect.x = Plugin.TrackerHudX.Value;
-        rect.y = Plugin.TrackerHudY.Value;
-
-        var opacity = Mathf.Clamp(Plugin.UiOpacity.Value, 0.55f, 1f);
-        var background = SCTheme.Backdrop;
-        background.a = opacity;
-        SCUI.Panel(rect, background, SCTheme.GoldSoft, 1f);
-        SCTheme.Fill(new Rect(rect.x, rect.y, rect.width, 32f), new Color(SCTheme.Header.r, SCTheme.Header.g, SCTheme.Header.b, opacity));
-        SCTheme.Fill(new Rect(rect.x, rect.y + 31f, rect.width, 1f), SCTheme.GoldSoft);
-
-        SCUI.Label(new Rect(rect.x + 12f, rect.y + 5f, rect.width - 86f, 24f), "BOSS ACOMPANHADO", _styles.Gold);
-        if (SCUI.Button(new Rect(rect.xMax - 54f, rect.y + 4f, 22f, 23f), "↻", _styles.Button, true))
-        {
-            BossRespawnOverlay.BossRespawnApi.Refresh(boss.CommandName);
-            _nextTrackedBossRefresh = Time.unscaledTime + Mathf.Clamp(Plugin.TrackerRefreshInterval.Value, 10f, 120f);
-        }
-        if (SCUI.Button(new Rect(rect.xMax - 28f, rect.y + 4f, 22f, 23f), "×", _styles.Button, true))
-        {
-            Plugin.TrackedBossCommand.Value = string.Empty;
-            _state.TrackedBossCommand = string.Empty;
-            Plugin.SaveState();
-            return;
-        }
-
-        SCUI.Label(new Rect(rect.x + 12f, rect.y + 39f, rect.width - 24f, 24f), $"{boss.Name}  •  Ato {boss.Act}  •  Nível {boss.Level}", _styles.Label);
-
-        var statusText = boss.Status switch
-        {
-            CompanionBossStatus.Alive => "VIVO • disponível agora",
-            CompanionBossStatus.Dead => $"MORTO • respawn em {SCUI.FormatTime(boss.RemainingSeconds)}",
-            CompanionBossStatus.Querying => "CONSULTANDO O SERVIDOR",
-            CompanionBossStatus.NotFound => "NÃO ENCONTRADO",
-            _ => "AGUARDANDO RESPOSTA"
-        };
-        var statusStyle = boss.Status == CompanionBossStatus.Alive ? _styles.Green :
-            boss.Status == CompanionBossStatus.Dead ? _styles.Gold : _styles.Muted;
-        SCUI.Label(new Rect(rect.x + 12f, rect.y + 65f, rect.width - 24f, 24f), statusText, statusStyle);
-
-        var footerY = rect.y + 93f;
-        if (boss.IsMobile)
-        {
-            var tracking = MobileBossTrackerService.Snapshot;
-            var distanceText = tracking.IsAvailable ? Mathf.RoundToInt(tracking.DistanceMeters) + " m" : "Indisponível";
-            SCUI.Label(new Rect(rect.x + 12f, rect.y + 91f, rect.width - 24f, 20f), "Distância: " + distanceText, tracking.IsAvailable ? _styles.Label : _styles.Muted);
-            SCUI.Label(new Rect(rect.x + 12f, rect.y + 113f, rect.width - 24f, 20f), "Direção: " + tracking.Direction, tracking.IsAvailable ? _styles.Label : _styles.Muted);
-            SCUI.Label(new Rect(rect.x + 12f, rect.y + 135f, rect.width - 24f, 20f), "Movimento: " + tracking.Movement, tracking.IsAvailable ? _styles.Green : _styles.Muted);
-            SCUI.Label(new Rect(rect.x + 12f, rect.y + 157f, rect.width - 24f, 20f), "Última leitura: " + MobileBossTrackerService.LastReadText(), _styles.Tiny);
-            footerY = rect.y + 175f;
-        }
-        var secondsUntilRefresh = Mathf.Max(0, Mathf.CeilToInt(_nextTrackedBossRefresh - Time.unscaledTime));
-        SCUI.Label(new Rect(rect.x + 12f, footerY, rect.width - 24f, 18f),
-            $"Atualização em {secondsUntilRefresh}s  •  {Plugin.TrackerRefreshKey.Value} consultar", _styles.Tiny);
-    }
-
-    private void HandleTrackerHudDragging(Rect rect)
-    {
-        var current = Event.current;
-        var header = new Rect(rect.x, rect.y, rect.width - 62f, 32f);
-
-        if (current.type == EventType.MouseDown && current.button == 0 && header.Contains(current.mousePosition))
-        {
-            _trackerHudDragging = true;
-            _trackerHudDragOffset = current.mousePosition - new Vector2(rect.x, rect.y);
-            current.Use();
-        }
-        else if (current.type == EventType.MouseDrag && _trackerHudDragging)
-        {
-            Plugin.TrackerHudX.Value = Mathf.Clamp(current.mousePosition.x - _trackerHudDragOffset.x, 0f, Mathf.Max(0f, Screen.width - rect.width));
-            Plugin.TrackerHudY.Value = Mathf.Clamp(current.mousePosition.y - _trackerHudDragOffset.y, 0f, Mathf.Max(0f, Screen.height - rect.height));
-            current.Use();
-        }
-        else if (current.type == EventType.MouseUp && _trackerHudDragging)
-        {
-            _trackerHudDragging = false;
-            Plugin.SaveState();
-            current.Use();
-        }
     }
 
     private void HandleDragging()

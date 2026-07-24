@@ -1,9 +1,0 @@
-Sangria Companion v2.3.2
-
-- Mini HUD de bosses movida para a aba Bosses, no rodapé após o controle "Na tela".
-- Mini HUD de eventos permanece controlável pela aba Eventos.
-- Seção "Mini HUDs" removida das Configurações.
-- Rodapé com versão e Discord removido das Configurações.
-- Botão "Restaurar padrões" integrado aos controles visuais.
-- Controles de bosses e configurações ajustados para reduzir cortes e sobreposição em resoluções menores.
-- Presets de avisos agora usam rótulos compactos (Básico, Intermediário e Completo).

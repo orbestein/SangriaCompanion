@@ -9,9 +9,9 @@
 
     <AssemblyName>SangriaCompanion</AssemblyName>
     <RootNamespace>SangriaCompanion</RootNamespace>
-    <Version>2.3.0</Version>
-    <AssemblyVersion>2.3.0.0</AssemblyVersion>
-    <FileVersion>2.3.0.0</FileVersion>
+    <Version>2.6.1</Version>
+    <AssemblyVersion>2.6.1.0</AssemblyVersion>
+    <FileVersion>2.6.1.0</FileVersion>
 
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
@@ -40,7 +40,7 @@
     <Compile Include="Modules\DashboardModule.cs" />
     <Compile Include="Modules\BossModule.cs" />
     <Compile Include="Modules\EventModule.cs" />
-    <Compile Include="Modules\TrackerModule.cs" />
+    <Compile Include="Modules\SessionDropsModule.cs" />
     <Compile Include="Modules\CollectionModule.cs" />
     <Compile Include="Modules\SettingsModule.cs" />
     <Compile Include="Services\BossPreferenceService.cs" />
@@ -54,7 +54,7 @@
     <Compile Include="Services\InputBlockService.cs" />
     <Compile Include="Services\InputSuppressionPatches.cs" />
     <Compile Include="Services\GameplayInputSuppressionPatches.cs" />
-    <Compile Include="Services\MobileBossTrackerService.cs" />
+    <Compile Include="Services\SessionDropService.cs" />
     <Compile Include="Services\RecipeDiscoveryService.cs" />
     <Compile Include="Services\ModuleRuntime.cs" />
     <Compile Include="UI\SCTheme.cs" />

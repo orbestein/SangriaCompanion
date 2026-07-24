@@ -30,8 +30,8 @@ internal sealed class SettingsModule
         DrawTimingColumn(new Rect(area.x + columnWidth + gap, top, columnWidth, 244f), styles);
 
         var y = top + 254f;
-        DrawQuickMute(new Rect(area.x, y, area.width, 50f), styles);
-        y += 58f;
+        DrawQuickMute(new Rect(area.x, y, area.width, 48f), styles);
+        y += 56f;
         DrawVisualControls(new Rect(area.x, y, area.width, 48f), styles);
     }
 
@@ -43,7 +43,7 @@ internal sealed class SettingsModule
         DrawCompactToggle(rect.x + 10f, ref y, rect.width - 20f, "Bosses", Plugin.BossAlertsEnabled, styles);
         DrawCompactToggle(rect.x + 10f, ref y, rect.width - 20f, "Eventos", Plugin.EventAlertsEnabled, styles);
         DrawCompactToggle(rect.x + 10f, ref y, rect.width - 20f, "Coletas", Plugin.CollectionAlertsEnabled, styles);
-        DrawCompactToggle(rect.x + 10f, ref y, rect.width - 20f, "Rastreador", Plugin.TrackerAlertsEnabled, styles);
+        DrawCompactToggle(rect.x + 10f, ref y, rect.width - 20f, "Pets e almas", Plugin.SessionDropAlertsEnabled, styles);
     }
 
     private static void DrawTimingColumn(Rect rect, SCStyles styles)
@@ -177,7 +177,7 @@ internal sealed class SettingsModule
         Plugin.BossAlertsEnabled.Value = true;
         Plugin.EventAlertsEnabled.Value = true;
         Plugin.CollectionAlertsEnabled.Value = true;
-        Plugin.TrackerAlertsEnabled.Value = true;
+        Plugin.SessionDropAlertsEnabled.Value = true;
         Plugin.RecipeAlertsEnabled.Value = true;
         Plugin.FavoriteBossHudEnabled.Value = true;
         Plugin.EventHudEnabled.Value = true;

@@ -44,6 +44,8 @@ internal static class InventorySyncService
         return 0;
     }
 
+    internal static void ForceRefresh() => _nextScanAt = 0f;
+
     internal static void Update()
     {
         if (Time.unscaledTime < _nextScanAt) return;
@@ -154,6 +156,8 @@ internal static class InventorySyncService
                         CollectionService.RecordInventoryChange(name, delta, now);
                 }
             }
+
+            SessionDropService.ObserveInventory(Current);
 
             Previous.Clear();
             foreach (var pair in Current) Previous[pair.Key] = pair.Value;

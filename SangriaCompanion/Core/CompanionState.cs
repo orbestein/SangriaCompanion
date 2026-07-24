@@ -11,7 +11,9 @@ internal sealed class CompanionState
     internal string BossSearch { get; set; } = string.Empty;
     internal bool BossSearchFocused { get; set; }
     internal bool[] ExpandedActs { get; } = [true, true, true, true];
-    internal string TrackedBossCommand { get; set; } = string.Empty;
+    internal float SessionDropScroll { get; set; }
+    // Índices 1–4 representam os atos; índice 0 guarda itens ainda não mapeados.
+    internal bool[] ExpandedSessionDropActs { get; } = [true, true, true, true, true];
     internal string RecipeSearch { get; set; } = string.Empty;
     internal bool RecipeSearchFocused { get; set; }
     internal float RecipeSearchScroll { get; set; }

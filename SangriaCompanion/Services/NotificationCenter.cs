@@ -69,7 +69,7 @@ internal static class NotificationCenter
             "Boss" => Plugin.BossAlertsEnabled.Value,
             "Evento" => Plugin.EventAlertsEnabled.Value,
             "Coleta" => Plugin.CollectionAlertsEnabled.Value,
-            "Rastreador" => Plugin.TrackerAlertsEnabled.Value,
+            "Pet/Alma" => Plugin.SessionDropAlertsEnabled.Value,
             "Receita" => Plugin.RecipeAlertsEnabled.Value,
             _ => true
         };

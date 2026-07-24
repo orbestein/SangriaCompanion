@@ -12,45 +12,82 @@ internal sealed class MobileBossTrackingSnapshot
 {
     internal bool IsMobileBoss { get; set; }
     internal bool IsAvailable { get; set; }
+    internal bool HasWorldPositions { get; set; }
     internal float DistanceMeters { get; set; }
     internal string Direction { get; set; } = "Indisponível";
     internal string Movement { get; set; } = "Fora da área sincronizada";
     internal float LastSeenRealtime { get; set; } = -1f;
     internal string SourcePrefab { get; set; } = string.Empty;
+    internal Vector2 PlayerWorldPosition { get; set; }
+    internal Vector2 BossWorldPosition { get; set; }
 }
 
 /// <summary>
-/// Lê somente posições realmente presentes no World do cliente. Não inventa
-/// coordenadas nem usa uma posição fixa. Se o servidor não replicar a entidade,
-/// a localização é informada como indisponível.
+/// Lê a posição do boss móvel selecionado e solicita a rota de patrulha
+/// diretamente aos componentes do jogo. Nenhuma posição é aprendida ou salva.
 /// </summary>
 internal static class MobileBossTrackerService
 {
+    // Nomes reais dos prefabs VBlood. A versão 2.5.0 usava aliases antigos
+    // para Tristan, Bane, Frostmaw e Styx, fazendo com que esses bosses nunca
+    // fossem reconhecidos pelo rastreador. Mantemos também tokens curtos como
+    // fallback para pequenas alterações de nome entre versões do jogo.
     private static readonly Dictionary<string, string[]> PrefabAliases = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["lidia"] = ["CHAR_Bandit_Chaosarrow_VBlood"],
-        ["goreswine"] = ["CHAR_Undead_BishopOfDeath_VBlood"],
-        ["tristan"] = ["CHAR_VampireHunter_VBlood", "CHAR_VampireHunter_Tristan_VBlood"],
-        ["bane"] = ["CHAR_Undead_Assassin_VBlood"],
-        ["jade"] = ["CHAR_VampireHunter_Jade_VBlood", "CHAR_VHunter_Jade_VBlood"],
-        ["frostmaw"] = ["CHAR_Winter_Yeti_VBlood", "CHAR_Winter_Yeti_Roaming_VBlood"],
-        ["styx"] = ["CHAR_Undead_ZealousCultist_VBlood", "CHAR_Undead_Overseer_VBlood"]
+        ["lidia"] = ["CHAR_Bandit_Chaosarrow_VBlood", "Chaosarrow_VBlood", "Chaosarrow"],
+        ["goreswine"] = ["CHAR_Undead_BishopOfDeath_VBlood", "BishopOfDeath_VBlood", "BishopOfDeath"],
+        ["tristan"] = ["CHAR_VHunter_Leader_VBlood", "VHunter_Leader_VBlood", "VHunter_Leader"],
+        ["bane"] = ["CHAR_Undead_Infiltrator_VBlood", "Undead_Infiltrator_VBlood", "Undead_Infiltrator"],
+        ["jade"] = ["CHAR_VHunter_Jade_VBlood", "VHunter_Jade_VBlood", "VHunter_Jade"],
+        ["frostmaw"] = ["CHAR_Wendigo_VBlood", "Wendigo_VBlood", "Wendigo"],
+        ["styx"] = ["CHAR_BatVampire_VBlood", "BatVampire_VBlood", "BatVampire"],
+        ["simon"] = [
+            "CHAR_VHunter_Simon_VBlood",
+            "CHAR_VHunter_SimonBelmont_VBlood",
+            "CHAR_VHunter_Belmont_VBlood",
+            "SimonBelmont_VBlood",
+            "Simon_Belmont",
+            "SimonBelmont",
+            "Belmont",
+            "Simon"
+        ]
     };
 
     private static readonly MobileBossTrackingSnapshot SnapshotValue = new();
+    private static readonly Dictionary<PrefabGUID, ResolvedMobileBoss> ResolvedPrefabs = new();
+    private static readonly Dictionary<string, BossCandidate> Candidates = new(StringComparer.OrdinalIgnoreCase);
     private static float3 _previousBossPosition;
     private static bool _hasPreviousPosition;
     private static string _previousCommand = string.Empty;
     private static float _nextScanAt;
+    private static float _nextPrefabResolveAt;
+    private static World? _resolvedWorld;
     private static string _lastDiagnostic = string.Empty;
 
     internal static MobileBossTrackingSnapshot Snapshot => SnapshotValue;
     internal static bool IsMobile(string command) => PrefabAliases.ContainsKey(command ?? string.Empty);
+    internal static IReadOnlyCollection<string> MobileCommands => PrefabAliases.Keys;
+    internal static int ResolvedPrefabCount => ResolvedPrefabs.Count;
+
+    internal static bool IsPrefabResolved(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command)) return false;
+        return ResolvedPrefabs.Values.Any(value => value.Command.Equals(command, StringComparison.OrdinalIgnoreCase));
+    }
+
+    internal static string DetectionStatus(string command)
+    {
+        if (!IsMobile(command)) return "Boss de localização fixa";
+        if (ResolvedPrefabs.Count == 0) return "Aguardando identificação dos prefabs móveis";
+        return IsPrefabResolved(command)
+            ? "Boss móvel reconhecido"
+            : "Prefab deste boss ainda não foi reconhecido";
+    }
 
     internal static void Update()
     {
         if (Time.unscaledTime < _nextScanAt) return;
-        _nextScanAt = Time.unscaledTime + 0.5f;
+        _nextScanAt = Time.unscaledTime + 0.65f;
 
         var command = Plugin.TrackedBossCommand.Value?.Trim() ?? string.Empty;
         if (!command.Equals(_previousCommand, StringComparison.OrdinalIgnoreCase))
@@ -60,119 +97,194 @@ internal static class MobileBossTrackerService
         }
 
         SnapshotValue.IsMobileBoss = IsMobile(command);
+
+        try
+        {
+            var world = ClientWorldService.World;
+            if (world == null || !world.IsCreated)
+            {
+                if (SnapshotValue.IsMobileBoss) SetUnavailable("Aguardando mundo do cliente");
+                return;
+            }
+
+            if (!SnapshotValue.IsMobileBoss) return;
+
+            EnsureResolvedPrefabs(world);
+            if (ResolvedPrefabs.Count == 0)
+            {
+                if (SnapshotValue.IsMobileBoss) SetUnavailable("Prefabs móveis não localizados");
+                return;
+            }
+
+            ScanWorld(world);
+            UpdateSelectedSnapshot(world, command);
+        }
+        catch (Exception ex)
+        {
+            if (SnapshotValue.IsMobileBoss) SetUnavailable("Falha na leitura do cliente");
+            Plugin.Instance.Log.LogWarning("Falha no rastreamento móvel: " + ex.Message);
+        }
+    }
+
+    private static void EnsureResolvedPrefabs(World world)
+    {
+        if (ReferenceEquals(_resolvedWorld, world) && Time.unscaledTime < _nextPrefabResolveAt)
+            return;
+
+        _resolvedWorld = world;
+        _nextPrefabResolveAt = Time.unscaledTime + 30f;
+        ResolvedPrefabs.Clear();
+
+        var prefabs = world.GetExistingSystemManaged<ProjectM.PrefabCollectionSystem>();
+        if (prefabs == null) return;
+
+        foreach (var pair in prefabs.SpawnableNameToPrefabGuidDictionary)
+        {
+            foreach (var aliasGroup in PrefabAliases)
+            {
+                var matched = false;
+                foreach (var alias in aliasGroup.Value)
+                {
+                    if (!pair.Key.Equals(alias, StringComparison.OrdinalIgnoreCase) &&
+                        !pair.Key.Contains(alias, StringComparison.OrdinalIgnoreCase)) continue;
+                    matched = true;
+                    break;
+                }
+
+                if (!matched) continue;
+                if (!ResolvedPrefabs.ContainsKey(pair.Value))
+                {
+                    ResolvedPrefabs[pair.Value] = new ResolvedMobileBoss
+                    {
+                        Command = aliasGroup.Key,
+                        PrefabName = pair.Key
+                    };
+                }
+                break;
+            }
+        }
+
+        var resolvedCommands = ResolvedPrefabs.Values
+            .Select(value => value.Command)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var missingCommands = PrefabAliases.Keys
+            .Where(command => !resolvedCommands.Contains(command, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        Plugin.Instance.Log.LogInfo(
+            $"Rastreador móvel: {ResolvedPrefabs.Count} prefab(s) reconhecido(s). Bosses: " +
+            (resolvedCommands.Length == 0 ? "nenhum" : string.Join(", ", resolvedCommands)));
+        if (missingCommands.Length > 0)
+            Plugin.Instance.Log.LogWarning("Rastreador móvel: prefab não localizado para " + string.Join(", ", missingCommands));
+    }
+
+    private static void ScanWorld(World world)
+    {
+        Candidates.Clear();
+        var em = world.EntityManager;
+        var player = ClientChatPatch.LocalCharacter;
+        var hasPlayerPosition = player != Entity.Null && em.Exists(player) && em.HasComponent<LocalToWorld>(player);
+        var playerPosition = hasPlayerPosition ? em.GetComponentData<LocalToWorld>(player).Position : float3.zero;
+
+        var query = em.CreateEntityQuery(
+            ComponentType.ReadOnly<PrefabGUID>(),
+            ComponentType.ReadOnly<LocalToWorld>());
+        var entities = query.ToEntityArray(Allocator.Temp);
+        try
+        {
+            for (var i = 0; i < entities.Length; i++)
+            {
+                var entity = entities[i];
+                if (!em.Exists(entity) || em.HasComponent<Prefab>(entity)) continue;
+
+                var guid = em.GetComponentData<PrefabGUID>(entity);
+                if (!ResolvedPrefabs.TryGetValue(guid, out var resolved)) continue;
+
+                var position = em.GetComponentData<LocalToWorld>(entity).Position;
+
+                var distanceSq = hasPlayerPosition
+                    ? math.distancesq(new float2(position.x, position.z), new float2(playerPosition.x, playerPosition.z))
+                    : 0f;
+
+                if (!Candidates.TryGetValue(resolved.Command, out var current) || distanceSq < current.DistanceSq)
+                {
+                    Candidates[resolved.Command] = new BossCandidate
+                    {
+                        Entity = entity,
+                        Position = position,
+                        PrefabName = resolved.PrefabName,
+                        DistanceSq = distanceSq
+                    };
+                }
+            }
+        }
+        finally
+        {
+            entities.Dispose();
+        }
+
+    }
+
+    private static void UpdateSelectedSnapshot(World world, string command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            SnapshotValue.IsAvailable = false;
+            SnapshotValue.HasWorldPositions = false;
+            return;
+        }
+
         if (!SnapshotValue.IsMobileBoss)
         {
             SetUnavailable("Boss de localização fixa");
             return;
         }
 
-        TryScan(command);
-    }
-
-    private static void TryScan(string command)
-    {
-        try
+        if (!Candidates.TryGetValue(command, out var candidate))
         {
-            var world = ClientWorldService.World;
-            var player = ClientChatPatch.LocalCharacter;
-            if (world == null || !world.IsCreated || player == Entity.Null)
-            {
-                SetUnavailable("Aguardando mundo do cliente");
-                return;
-            }
-
-            var em = world.EntityManager;
-            if (!em.Exists(player) || !em.HasComponent<LocalToWorld>(player))
-            {
-                SetUnavailable("Posição do jogador indisponível");
-                return;
-            }
-
-            if (!TryResolveBossGuid(world, command, out var bossGuid, out var prefabName))
-            {
-                SetUnavailable("Prefab do boss não localizado");
-                return;
-            }
-
-            var query = em.CreateEntityQuery(
-                ComponentType.ReadOnly<PrefabGUID>(),
-                ComponentType.ReadOnly<LocalToWorld>());
-            var entities = query.ToEntityArray(Allocator.Temp);
-            try
-            {
-                Entity bossEntity = Entity.Null;
-                for (var i = 0; i < entities.Length; i++)
-                {
-                    var entity = entities[i];
-                    if (!em.Exists(entity)) continue;
-                    var guid = em.GetComponentData<PrefabGUID>(entity);
-                    if (guid == bossGuid)
-                    {
-                        bossEntity = entity;
-                        break;
-                    }
-                }
-
-                if (bossEntity == Entity.Null)
-                {
-                    SetUnavailable("Fora da área sincronizada");
-                    SnapshotValue.SourcePrefab = prefabName;
-                    return;
-                }
-
-                var playerPosition = em.GetComponentData<LocalToWorld>(player).Position;
-                var bossPosition = em.GetComponentData<LocalToWorld>(bossEntity).Position;
-                var horizontal = new float2(bossPosition.x - playerPosition.x, bossPosition.z - playerPosition.z);
-                SnapshotValue.DistanceMeters = math.length(horizontal);
-                SnapshotValue.Direction = DirectionFrom(horizontal);
-                SnapshotValue.Movement = _hasPreviousPosition && math.distance(_previousBossPosition, bossPosition) > 0.45f
-                    ? "Em deslocamento"
-                    : "Parado";
-                SnapshotValue.IsAvailable = true;
-                SnapshotValue.LastSeenRealtime = Time.unscaledTime;
-                SnapshotValue.SourcePrefab = prefabName;
-                _lastDiagnostic = string.Empty;
-                _previousBossPosition = bossPosition;
-                _hasPreviousPosition = true;
-            }
-            finally
-            {
-                entities.Dispose();
-            }
+            MobileBossRouteService.MarkUnavailable(command, "Aproxime-se do boss para carregar a rota real do jogo");
+            SetUnavailable("Fora da área sincronizada");
+            return;
         }
-        catch (Exception ex)
+
+        var em = world.EntityManager;
+        var player = ClientChatPatch.LocalCharacter;
+        if (player == Entity.Null || !em.Exists(player) || !em.HasComponent<LocalToWorld>(player))
         {
-            SetUnavailable("Falha na leitura do cliente");
-            Plugin.Instance.Log.LogWarning("Falha no rastreamento móvel: " + ex.Message);
+            SnapshotValue.SourcePrefab = candidate.PrefabName;
+            SetUnavailable("Posição do jogador indisponível");
+            return;
         }
-    }
 
-    private static bool TryResolveBossGuid(World world, string command, out PrefabGUID guid, out string prefabName)
-    {
-        guid = default;
-        prefabName = string.Empty;
-        if (!PrefabAliases.TryGetValue(command, out var aliases)) return false;
+        var playerPosition = em.GetComponentData<LocalToWorld>(player).Position;
+        var bossPosition = candidate.Position;
+        var horizontal = new float2(bossPosition.x - playerPosition.x, bossPosition.z - playerPosition.z);
 
-        var prefabs = world.GetExistingSystemManaged<ProjectM.PrefabCollectionSystem>();
-        if (prefabs == null) return false;
+        SnapshotValue.DistanceMeters = math.length(horizontal);
+        SnapshotValue.Direction = DirectionFrom(horizontal);
+        SnapshotValue.Movement = _hasPreviousPosition && math.distance(_previousBossPosition, bossPosition) > 0.45f
+            ? "Em deslocamento"
+            : "Parado";
+        SnapshotValue.IsAvailable = true;
+        SnapshotValue.HasWorldPositions = true;
+        SnapshotValue.LastSeenRealtime = Time.unscaledTime;
+        SnapshotValue.SourcePrefab = candidate.PrefabName;
+        SnapshotValue.PlayerWorldPosition = new Vector2(playerPosition.x, playerPosition.z);
+        SnapshotValue.BossWorldPosition = new Vector2(bossPosition.x, bossPosition.z);
+        _lastDiagnostic = string.Empty;
+        _previousBossPosition = bossPosition;
+        _hasPreviousPosition = true;
 
-        foreach (var pair in prefabs.SpawnableNameToPrefabGuidDictionary)
-        {
-            for (var i = 0; i < aliases.Length; i++)
-            {
-                if (!pair.Key.Equals(aliases[i], StringComparison.OrdinalIgnoreCase) &&
-                    !pair.Key.Contains(aliases[i], StringComparison.OrdinalIgnoreCase)) continue;
-                guid = pair.Value;
-                prefabName = pair.Key;
-                return true;
-            }
-        }
-        return false;
+        MobileBossRouteService.RefreshFromWorld(world, command, candidate.Entity, bossPosition);
     }
 
     private static void SetUnavailable(string movement)
     {
         SnapshotValue.IsAvailable = false;
+        SnapshotValue.HasWorldPositions = false;
         SnapshotValue.DistanceMeters = 0f;
         SnapshotValue.Direction = "Indisponível";
         SnapshotValue.Movement = movement;
@@ -203,5 +315,19 @@ internal static class MobileBossTrackerService
         if (SnapshotValue.LastSeenRealtime < 0f) return "Nunca";
         var elapsed = Mathf.Max(0, Mathf.FloorToInt(Time.unscaledTime - SnapshotValue.LastSeenRealtime));
         return elapsed <= 1 ? "Agora" : elapsed + " s atrás";
+    }
+
+    private sealed class ResolvedMobileBoss
+    {
+        internal string Command { get; init; } = string.Empty;
+        internal string PrefabName { get; init; } = string.Empty;
+    }
+
+    private sealed class BossCandidate
+    {
+        internal Entity Entity { get; init; }
+        internal float3 Position { get; init; }
+        internal string PrefabName { get; init; } = string.Empty;
+        internal float DistanceSq { get; init; }
     }
 }

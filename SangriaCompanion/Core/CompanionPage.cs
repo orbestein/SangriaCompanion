@@ -5,7 +5,7 @@ internal enum CompanionPage
     Dashboard,
     Bosses,
     Events,
-    Tracker,
+    SessionDrops,
     Collection,
     Settings
 }

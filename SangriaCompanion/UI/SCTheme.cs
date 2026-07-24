@@ -38,4 +38,22 @@ internal static class SCTheme
         Fill(new Rect(rect.x, rect.y, thickness, rect.height), color);
         Fill(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color);
     }
+
+    internal static void Line(Vector2 start, Vector2 end, Color color, float thickness = 2f)
+    {
+        var delta = end - start;
+        var length = delta.magnitude;
+        if (length < 0.5f) return;
+
+        var previousMatrix = GUI.matrix;
+        var angle = Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg;
+        GUIUtility.RotateAroundPivot(angle, start);
+        Fill(new Rect(start.x, start.y - thickness * 0.5f, length, thickness), color);
+        GUI.matrix = previousMatrix;
+    }
+
+    internal static void Dot(Vector2 center, float size, Color color)
+    {
+        Fill(new Rect(center.x - size * 0.5f, center.y - size * 0.5f, size, size), color);
+    }
 }

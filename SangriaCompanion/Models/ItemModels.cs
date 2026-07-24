@@ -39,3 +39,20 @@ internal readonly record struct MaterialRequirement(string ItemName, int Require
     internal int Missing => Math.Max(0, Required - Collected);
     internal bool Complete => Collected >= Required;
 }
+
+internal enum SessionDropKind
+{
+    Pet,
+    Soul
+}
+
+internal sealed class SessionDropEntry
+{
+    internal string ItemName { get; init; } = string.Empty;
+    internal string DisplayName { get; init; } = string.Empty;
+    internal SessionDropKind Kind { get; init; }
+    internal int Act { get; init; }
+    internal int Quantity { get; set; }
+    internal DateTime FirstSeen { get; init; }
+    internal DateTime LastSeen { get; set; }
+}
